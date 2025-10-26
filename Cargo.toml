@@ -1,0 +1,21 @@
+[package]
+name = "ip2vec"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "~1.0"
+
+thousands = "~0.2"
+indexmap = "~2.12"
+serde = { version = "~1.0", features = ["derive"] }
+csv = "~1.4"
+
+burn = { version = "~0.18", features = [
+  "train", "tui", "metrics",
+  "cuda", "fusion", "autodiff"
+] }
+
+[dev-dependencies]
+proptest = "1.8.0"
+proptest-derive = "0.6.0"
