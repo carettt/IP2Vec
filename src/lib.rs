@@ -6,3 +6,4 @@
 //! (Mikolov et al., 2013) embedding algorithm
 
 pub mod dataset;
+pub mod model;

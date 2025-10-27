@@ -12,7 +12,11 @@
   outputs = { self, nixpkgs, fenix, ... }: let
     system = "x86_64-linux";
 
-    pkgs = nixpkgs.legacyPackages.${system};
+    pkgs = import nixpkgs {
+      inherit system;
+      config.allowUnfree = true;
+    };
+
     toolchain = fenix.packages.${system}.stable.defaultToolchain;
   in {
     devShells.${system}.default = pkgs.mkShell rec {
@@ -22,11 +26,19 @@
         pkgs.rust-analyzer
       ];
 
+      buildInputs = [
+        pkgs.cudaPackages.cudatoolkit
+        pkgs.linuxPackages.nvidia_x11
+      ];
+
       shellHook = ''
         ${pkgs.cowsay}/bin/cowsay "entered dev env!" | ${pkgs.lolcat}/bin/lolcat -F 0.5
       '';
 
-      LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath nativeBuildInputs;
+      LD_LIBRARY_PATH =
+        pkgs.lib.makeLibraryPath (nativeBuildInputs ++ buildInputs);
+
+      CUDA_PATH = "${pkgs.cudaPackages.cudatoolkit}";
     };
   };
 }
