@@ -46,3 +46,18 @@ pub struct Ip2Vec<B: Backend> {
 
   hidden: nn::Linear<B>
 }
+
+impl<B: Backend> Ip2Vec<B> {
+  fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
+    let src_ip_proj = self.activation.forward(
+      self.src_ip_input.forward(input.clone().narrow(1, 0, 32)));
+    let dst_port_proj = self.activation.forward(
+      self.dst_port_input.forward(input.clone().narrow(1, 32, 1)));
+    let protocol_proj = self.activation.forward(
+      self.protocol_input.forward(input.clone().narrow(1, 33, 1)));
+
+    let combined = Tensor::cat(vec![src_ip_proj, dst_port_proj, protocol_proj], 1);
+
+    self.hidden.forward(combined)
+  }
+}
