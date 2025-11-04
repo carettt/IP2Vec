@@ -10,12 +10,18 @@ use std::{
 use indexmap::IndexSet;
 use anyhow::{Result, Context, bail};
 use serde::Deserialize;
+use burn::{
+  prelude::*,
+  data::dataset::Dataset
+};
 
 #[cfg(test)] use proptest_derive::Arbitrary;
 
 pub mod batch;
 
-/// Struct containing contextual information about an IP from a flow
+type CPUBackend = burn::backend::ndarray::NdArray<f32, i32>;
+
+/// Abstract Struct containing contextual information about an IP from a flow
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct IpContext {
@@ -35,61 +41,100 @@ pub struct IpContext {
   protocol: u8
 }
 
+impl<B> From<IpContext> for Tensor<B, 1> where 
+  B: Backend
+{
+  fn from(value: IpContext) -> Self {
+    let mut tensor_data: Vec<f32> = Vec::with_capacity(34);
+
+    let src_ip = value.src_ip.to_bits();
+    let src_ip_bits = (0..32).map(|i| {
+      ((src_ip >> i) & 1) as f32
+    }).collect::<Vec<f32>>();
+
+    tensor_data.extend(src_ip_bits);
+    tensor_data.push(value.dst_port as f32 / 65535.0);
+    tensor_data.push(value.protocol as f32 / 255.0);
+
+    let tensor: Tensor<B, 1> =
+      Tensor::from_data(tensor_data.as_slice(), &B::Device::default());
+
+    tensor
+  }
+}
+
+/// Encoded IPContext into target tensor of shape [34] and context tensor of
+/// shape [num_contexts, 34]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
+pub struct ContextItem {
+  target: Tensor<CPUBackend, 1>,
+  context: Tensor<CPUBackend, 2>
+}
 
 /// Struct containing indexed set of [IpContext] and a conversion map for fetching
 /// a sample index for each `src_ip`.
-#[cfg_attr(test, derive(Debug, Default))]
+#[cfg_attr(test, derive(Debug, Default, Clone))]
 pub struct Ip2VecDataset {
   samples: IndexSet<IpContext>
 }
 
 impl Ip2VecDataset {
-  /// Helper function to generate a non-validated [Dataset] from a collection of
+  /// Helper function to generate a validated [Dataset] from a collection of
   /// [IpContext]
-  fn new<T>(collection: T) -> Self
+  fn new<T>(collection: T) -> Result<Self>
   where 
     T: IntoIterator<Item = IpContext>
   {
-    Self {
-      samples: IndexSet::from_iter(collection)
-    }
-  }
-
-  /// Validation function to ensure all samples have context. Context is defined
-  /// as a sample with `src` and `dst` fields mirrored.
-  fn validate_samples(&mut self) {
-    // Get list of all `src_ip`s
-    let src_set: HashSet<Ipv4Addr> =
-      self.samples.iter().map(|sample| sample.src_ip).collect();
+    let mut samples: IndexSet<IpContext> = IndexSet::from_iter(collection);
 
     // Initialize new sample Vec and index map
     let mut validated_samples: Vec<IpContext> =
-      Vec::with_capacity(self.samples.len());
+      Vec::with_capacity(samples.len());
     let mut ip_to_idx: HashMap<Ipv4Addr, Vec<usize>> =
-      HashMap::with_capacity(self.samples.len());
+      HashMap::with_capacity(samples.len());
 
-    // Validate each sample's `dst_ip` has a corresponding `src` and append to
-    // index map `Vec`
-    for sample in self.samples.iter() {
-      if src_set.contains(&sample.dst_ip) {
-        let idx = validated_samples.len();
-        ip_to_idx.entry(sample.src_ip).or_default().push(idx);
-        validated_samples.push(sample.clone());
+    // Remove samples without context
+    let mut valid = false;
+
+    while !valid {
+      let src_set: HashSet<Ipv4Addr> = samples.iter().map(|s| s.src_ip).collect();
+
+      validated_samples = samples.iter().cloned()
+        .filter(|s| src_set.contains(&s.dst_ip))
+        .collect();
+
+      if validated_samples.len() == samples.len() {
+        valid = true;
       }
+
+      samples = validated_samples.iter().cloned().collect();
+    }
+
+    // Fill `ip_to_idx` with indexes of each sample
+    for (i, sample) in samples.iter().enumerate() {
+      ip_to_idx.entry(sample.src_ip).or_default().push(i);
     }
 
     // Wrap indices `Vec`s with an Arc to reduce memory usage
     let shared_contexts: HashMap<Ipv4Addr, Arc<Vec<usize>>> = ip_to_idx.into_iter()
       .map(|(ip, indices)| (ip, Arc::new(indices))).collect();
 
+
     // Update samples with `context_indices`
     for sample in validated_samples.iter_mut() {
-      sample.context_indices = shared_contexts.get(&sample.src_ip)
-        .expect("could not find context after validation").clone();
+      sample.context_indices = shared_contexts.get(&sample.dst_ip)
+        .context("could not find context after validation")?.clone();
     }
 
-    // Update dataset with validated samples
-    self.samples = IndexSet::from_iter(validated_samples.into_iter());
+    let samples: IndexSet<IpContext> =
+      IndexSet::from_iter(validated_samples.into_iter());
+
+    if samples.len() < 2 {
+      bail!("insufficient valid samples!")
+    } else {
+      Ok(Self { samples })
+    }
   }
 
   /// Function for importing CSV data set from `path`
@@ -101,10 +146,7 @@ impl Ip2VecDataset {
         .context(format!("could not deserialize sample {i}")))
       .collect::<Result<Vec<_>>>()?;
 
-    let mut dataset = Self::new(samples);
-    dataset.validate_samples();
-
-    Ok(dataset)
+    Self::new(samples)
   }
 
   /// Fetch index of context pair for sample at `idx`
@@ -114,6 +156,29 @@ impl Ip2VecDataset {
     } else {
       bail!("could not find context for sample {idx}")
     }
+  }
+}
+
+impl Dataset<ContextItem> for Ip2VecDataset {
+  fn get(&self, idx: usize) -> Option<ContextItem> {
+    let item = self.samples.get_index(idx)?;
+    let contexts: Vec<Tensor<CPUBackend, 1>> =
+      self.get_context_indices(idx).ok()?.iter()
+        .map(|i| self.samples.get_index(*i)
+          .and_then(|s| Some::<Tensor<CPUBackend, 1>>(Tensor::from(s.clone()))))
+        .collect::<Option<_>>()?;
+
+    let target = Tensor::from(item.clone());
+    let context = Tensor::stack(contexts, 0);
+
+    Some(ContextItem {
+      target,
+      context
+    })
+  }
+
+  fn len(&self) -> usize {
+    self.samples.len()
   }
 }
 
@@ -131,9 +196,9 @@ mod tests {
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
       prop::collection::vec(
         any::<IpContext>()
-        , 0..500)
-      .prop_map(|vec| {
-        Ip2VecDataset::new(vec)
+        , 10..500)
+      .prop_filter_map("invalid dataset", |vec| {
+        Ip2VecDataset::new(vec).ok()
       })
       .boxed()
     }
@@ -184,13 +249,36 @@ mod tests {
     }
 
     #[test]
-    fn validation(mut dataset in any::<Ip2VecDataset>()) {
-      dataset.validate_samples();
-
+    fn validation(dataset in any::<Ip2VecDataset>()) {
       for i in 0..dataset.samples.len() {
-        let result = dataset.get_context_indices(i);
+        let indices = dataset.get_context_indices(i).unwrap();
 
-        prop_assert!(result.is_ok());
+        for i in indices.iter() {
+          let context = dataset.samples.get_index(*i);
+          prop_assert!(context.is_some());
+        }
+      }
+    }
+
+    #[test]
+    fn target_encoding(dataset in any::<Ip2VecDataset>()) {
+      for i in 0..dataset.samples.len() {
+        let item = dataset.get(i).unwrap();
+
+        prop_assert_eq!(item.target.shape().dims, vec![34]);
+      }
+    }
+
+    #[test]
+    fn context_encoding(dataset in any::<Ip2VecDataset>()) {
+      for i in 0..dataset.samples.len() {
+        let sample = dataset.samples.get_index(i).unwrap();
+        let item = dataset.get(i).unwrap();
+
+        prop_assert_eq!(
+          item.context.shape().dims,
+          vec![sample.context_indices.len(), 34]
+        );
       }
     }
   }
