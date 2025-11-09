@@ -1,7 +1,11 @@
 //! Submodule containing batching functionalities accessible through the 
 //! [ContextBatcher] struct, which yields [ContextBatch]es.
 
-use burn::{prelude::*, data::dataloader::batcher::Batcher};
+use burn::{
+  prelude::*,
+  data::dataloader::batcher::Batcher,
+  tensor::Transaction
+};
 
 use crate::dataset::{ContextItem};
 
@@ -32,22 +36,34 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
   fn batch(&self, items: Vec<ContextItem>, device: &B::Device) -> ContextBatch<B> {
     let batch_size = items.len();
 
+    // Collect sample targets and move to GPU
     let sample_tensors = items.iter().cloned()
       .map(|i| i.target).collect::<Vec<_>>();
     let samples = Tensor::from_data(
-      Tensor::stack::<2>(sample_tensors, 0).to_data()
+      Tensor::stack::<2>(sample_tensors, 0).into_data()
     , device);
 
     let mut contexts: Tensor<B, 3> =
       Tensor::zeros([batch_size, self.context_window, samples.dims()[1]], device);
     let mut context_mask = Tensor::zeros([batch_size, self.context_window], device);
 
-    for (i, item) in items.iter().enumerate() {
-      let context_tensor: Tensor<B, 2> =
-        Tensor::from_data(item.context.to_data(), device);
+    // Batch synchronization from CPU to GPU of contexts with a transaction
+    let mut transaction = Transaction::default();
+    for item in items.into_iter() {
+      transaction = transaction.register(item.context);
+    }
 
+    // Execute sync
+    let context_data = transaction.execute();
+
+    for (i, data) in context_data.into_iter().enumerate() {
+      let context_tensor: Tensor<B, 2> = Tensor::from_data(data, device);
+      let dims = context_tensor.dims();
+      
+      // Assign contexts to plane on 3D vector, unsqueezing for compatibility
       contexts = contexts.slice_assign(s![i], context_tensor.unsqueeze::<3>());
-      context_mask = context_mask.slice_fill(s![i, 0..item.context.dims()[0]], 1);
+      // Toggle mask bits from 0 until number of contexts
+      context_mask = context_mask.slice_fill(s![i, 0..dims[0]], 1);
     }
 
     ContextBatch { samples, contexts, context_mask }
@@ -70,7 +86,7 @@ mod tests {
 
   proptest! {
     #[test]
-    fn batching(
+    fn batch_shape(
       dataset in any::<Ip2VecDataset>()
     ) {
       type Backend = burn::backend::Cuda<f32, i32>;
@@ -113,9 +129,6 @@ mod tests {
 
         batches.push(batch);
       }
-
-      eprintln!("----------------------------------BATCH-------------------------------------");
-      eprintln!("{}\n{}\n{}", batches[0].samples, batches[0].contexts, batches[0].context_mask);
 
       prop_assert!(valid);
     }
