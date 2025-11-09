@@ -10,3 +10,4 @@ pub type Backend = burn::backend::Cuda<f32, i32>;
 
 pub mod dataset;
 pub mod model;
+pub mod train;

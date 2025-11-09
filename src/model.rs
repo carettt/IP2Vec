@@ -2,7 +2,9 @@
 //! hidden layer (which will be extracted for embeddings). The model should be
 //! constructed with [Ip2VecConfig] which provides default embed dimension params.
 
-use burn::prelude::*;
+use crate::train::EmbeddingOutput;
+
+use burn::{nn::loss::CosineEmbeddingLossConfig, prelude::*};
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
 /// and `protocol` projection layers; totaling to a 150-d embedding tensor.
@@ -59,5 +61,93 @@ impl<B: Backend> Ip2Vec<B> {
     let combined = Tensor::cat(vec![src_ip_proj, dst_port_proj, protocol_proj], 1);
 
     self.hidden.forward(combined)
+  }
+
+  /// Flatten batch fields, perform forward passes and compute loss
+  pub fn embed(
+    &self,
+    targets: Tensor<B, 2>,
+    context: Tensor<B, 3>,
+    mask: Tensor<B, 2, Int>
+  ) -> EmbeddingOutput<B> {
+    let embeddings = self.forward(targets.clone());
+
+    let context_window = mask.dims()[1];
+
+    // Repeat each row contiguously for every context
+    let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
+      .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
+
+    let context: Tensor<B, 2> = self.forward(context.flatten(0, 1));
+
+    // Flatten mask and convert to 0 to -1
+    let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
+
+    let loss = CosineEmbeddingLossConfig::new()
+      .with_margin(0.5)
+      .init()
+      .forward(expanded_embeddings, context, mask);
+
+    EmbeddingOutput::new(embeddings, loss)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{Backend, dataset::batch::ContextBatch};
+
+  use proptest::prelude::*;
+  use burn::backend::cuda::CudaDevice;
+
+  fn batch_strategy() -> impl Strategy<Value = ContextBatch<Backend>> {
+    let device = CudaDevice::new(0);
+
+    prop::collection::vec(
+      prop::collection::vec(
+        0..=1,
+        34
+      ),
+      2..10
+    ).prop_map(move |vec: Vec<Vec<i32>>| {
+      let batch_size = vec.len();
+      let context_window = 2;
+
+      let flattened: Vec<i32> = vec.into_iter().flatten().collect();
+      let target_data = TensorData::new(flattened, [batch_size, 34]);
+
+      let target: Tensor<Backend, 2> =
+        Tensor::from_data(target_data, &device);
+      let mut contexts: Tensor<Backend, 3> = 
+        Tensor::zeros([batch_size, context_window, target.dims()[1]], &device);
+      let mut context_mask = Tensor::zeros([batch_size, context_window], &device);
+
+      let dims = target.dims();
+
+      for i in 0..dims[0] {
+        contexts = contexts.slice_assign(s![i], target.clone().slice(s![0..2]).unsqueeze::<3>());
+        context_mask = context_mask.slice_fill(s![i, 0], 1);
+      }
+
+      ContextBatch::new(target, contexts, context_mask)
+    })
+  }
+
+  proptest! {
+    #[test]
+    fn output_shape(batch in batch_strategy()) {
+      let device = CudaDevice::new(0);
+
+      let config = Ip2VecConfig::new();
+
+      let batch_size = batch.samples.dims()[0];
+      let embed_dim = config.src_ip_embed_dim + config.dst_port_embed_dim + config.protocol_embed_dim;
+
+      let model = config.init::<Backend>(&device);
+
+      let output = model.embed(batch.samples, batch.contexts, batch.context_mask);
+
+      prop_assert_eq!(output.embeddings.dims(), [batch_size, embed_dim]);
+    }
   }
 }

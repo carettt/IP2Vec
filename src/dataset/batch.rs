@@ -9,13 +9,26 @@ use burn::{
 
 use crate::dataset::{ContextItem};
 
-/// Batch of samples derived from [IpContext] into [Tensor]s of sizes:
-/// samples: `[batch_size, 34]` & context_mask `[batch_size, batch_size]`
+/// Batch of samples derived from [IpContext] into [Tensor]s
 #[derive(Debug, Clone)]
 pub struct ContextBatch<B: Backend> {
-  samples: Tensor<B, 2>,
-  contexts: Tensor<B, 3>,
-  context_mask: Tensor<B, 2>
+  /// 2D tensor of shape [batch_size, 34]
+  pub samples: Tensor<B, 2>,
+  /// 3D tensor of shape [batch_size, context_window, 34]
+  pub contexts: Tensor<B, 3>,
+  /// 2D tensor of shape [batch_size, context_window]
+  pub context_mask: Tensor<B, 2, Int>
+}
+
+impl<B: Backend> ContextBatch<B> {
+  /// Helper function to create a new batch for testing (shouldn't be used)
+  pub fn new(
+    samples: Tensor<B, 2>,
+    contexts: Tensor<B, 3>,
+    context_mask: Tensor<B, 2, Int>
+  ) -> Self {
+    Self { samples, contexts, context_mask }
+  }
 }
 
 /// Struct implementing [Batcher] to transform [Dataset] into [ContextBatch]es.
