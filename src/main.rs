@@ -1,18 +1,23 @@
 use anyhow::Result;
 
+use burn::{backend::{cuda::CudaDevice, Autodiff}, optim::SgdConfig};
 use ip2vec::{
-  Backend,
-  dataset::Ip2VecDataset,
-  model::Ip2VecConfig
+  dataset::Ip2VecDataset, model::Ip2VecConfig, train::TrainingConfig, Backend
 };
 
 fn main() -> Result<()> {
-  let _dataset = Ip2VecDataset::import_dataset("../NF-UNSW-NB15-v3/data/NF-UNSW-NB15-v3.csv")?;
+  let device = CudaDevice::new(0);
 
-  let device = Default::default();
-  let model = Ip2VecConfig::new().init::<Backend>(&device);
+  let trainer = TrainingConfig::new(
+    String::from("/home/caret/Documents/cmp400/model"),
+    Ip2VecConfig::new(),
+    SgdConfig::new()
+  );
 
-  println!("{model}");
+  let dataset = Ip2VecDataset::import_dataset("../NF-UNSW-NB15-v3/data/NF-UNSW-NB15-v3.csv")?;
+
+  trainer.init::<Backend>(&device)?;
+  trainer.train::<Autodiff<Backend>>(dataset, &device);
 
   Ok(())
 }

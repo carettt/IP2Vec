@@ -64,9 +64,8 @@ impl<B> From<IpContext> for Tensor<B, 1> where
 }
 
 /// Encoded IPContext into target tensor of shape [34] and context tensor of
-/// shape [num_contexts, 34]
-#[derive(Clone)]
-#[cfg_attr(test, derive(Debug))]
+/// shape [context_window, 34]
+#[derive(Clone, Debug)]
 pub struct ContextItem {
   target: Tensor<CPUBackend, 1>,
   context: Tensor<CPUBackend, 2>
@@ -74,9 +73,10 @@ pub struct ContextItem {
 
 /// Struct containing indexed set of [IpContext] and a conversion map for fetching
 /// a sample index for each `src_ip`.
-#[cfg_attr(test, derive(Debug, Default, Clone))]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Ip2VecDataset {
-  samples: IndexSet<IpContext>
+  samples: IndexSet<IpContext>,
 }
 
 impl Ip2VecDataset {

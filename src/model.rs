@@ -2,9 +2,17 @@
 //! hidden layer (which will be extracted for embeddings). The model should be
 //! constructed with [Ip2VecConfig] which provides default embed dimension params.
 
-use crate::train::EmbeddingOutput;
+use crate::{
+  train::EmbeddingOutput,
+  dataset::batch::ContextBatch
+};
 
-use burn::{nn::loss::CosineEmbeddingLossConfig, prelude::*};
+use burn::{
+  prelude::*,
+  nn::loss::CosineEmbeddingLossConfig,
+  tensor::backend::AutodiffBackend,
+  train::{TrainStep, TrainOutput, ValidStep}
+};
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
 /// and `protocol` projection layers; totaling to a 150-d embedding tensor.
@@ -89,6 +97,20 @@ impl<B: Backend> Ip2Vec<B> {
       .forward(expanded_embeddings, context, mask);
 
     EmbeddingOutput::new(embeddings, loss)
+  }
+}
+
+impl<B: AutodiffBackend> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
+  fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
+    let output = self.embed(batch.samples, batch.contexts, batch.context_mask);
+
+    TrainOutput::new(self, output.loss.backward(), output)
+  }
+}
+
+impl <B: Backend> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
+  fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
+    self.embed(batch.samples, batch.contexts, batch.context_mask)
   }
 }
 
