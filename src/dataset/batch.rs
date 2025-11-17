@@ -145,6 +145,57 @@ mod tests {
 
       prop_assert!(valid);
     }
+
+
+    #[test]
+    fn batch_device(
+      dataset in any::<Ip2VecDataset>()
+    ) {
+      type Backend = burn::backend::Cuda<f32, i32>;
+
+      let mut valid = true;
+
+      let device = CudaDevice::new(0);
+
+      let num_batches = (dataset.len() + 1) / 2;
+
+      let batch_size = dataset.len() / num_batches;
+      let remainder = dataset.len() % num_batches;
+
+      let mut batch_start = 0;
+      let batcher = ContextBatcher::default();
+
+      let mut batches = Vec::with_capacity(num_batches);
+
+      for i in 0..num_batches {
+        let batch_end = (batch_start + batch_size)
+          + if i < remainder {1} else {0};
+
+        let batch_items = 
+          (batch_start..batch_end).map(|i| dataset.get(i))
+          .collect::<Option<Vec<_>>>()
+          .expect("could not get all batch items");
+
+        let batch =
+          <ContextBatcher as Batcher<Backend, ContextItem, ContextBatch<Backend>>>
+            ::batch(&batcher, batch_items, &device);
+
+        batch_start = batch_end;
+
+        eprintln!("{:?}", batch.samples.device());
+        eprintln!("{:?}", batch.contexts.device());
+        eprintln!("{:?}", batch.context_mask.device());
+
+        valid = valid &&
+          (batch.samples.device() == device) &&
+          (batch.contexts.device() == device) &&
+          (batch.context_mask.device() == device);
+
+        batches.push(batch);
+      }
+
+      prop_assert!(false);
+    }
   }
 }
 
