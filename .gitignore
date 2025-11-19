@@ -1,3 +1,4 @@
 /target
 /.direnv
 /proptest-regressions
+profile.json.gz

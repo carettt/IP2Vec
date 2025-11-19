@@ -182,9 +182,9 @@ mod tests {
 
         batch_start = batch_end;
 
-        eprintln!("{:?}", batch.samples.device());
-        eprintln!("{:?}", batch.contexts.device());
-        eprintln!("{:?}", batch.context_mask.device());
+        //eprintln!("{:?}", batch.samples.device());
+        //eprintln!("{:?}", batch.contexts.device());
+        //eprintln!("{:?}", batch.context_mask.device());
 
         valid = valid &&
           (batch.samples.device() == device) &&
@@ -194,7 +194,7 @@ mod tests {
         batches.push(batch);
       }
 
-      prop_assert!(false);
+      prop_assert!(valid);
     }
   }
 }
