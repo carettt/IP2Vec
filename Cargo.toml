@@ -12,10 +12,14 @@ serde = { version = "~1.0", features = ["derive"] }
 csv = "~1.4"
 
 burn = { version = "~0.19", features = [
-  "train", "tui", "metrics",
+  "train", "metrics",
   "ndarray", "cuda", "fusion", "autodiff"
-] }
+], default-features = false }
 
 [dev-dependencies]
 proptest = "1.8.0"
 proptest-derive = "0.6.0"
+
+[profile.experiment]
+inherits = "release"
+debug = true
