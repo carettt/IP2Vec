@@ -5,10 +5,9 @@ use crate::{dataset::{batch::{ContextBatch, ContextBatcher}, ContextItem, Ip2Vec
 use std::sync::Arc;
 
 use burn::{
-  backend::NdArray, data::{dataloader::{DataLoader, DataLoaderBuilder}, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::backend::AutodiffBackend, train::{metric::{
-    Adaptor, CudaMetric, LossInput, LossMetric, ItemLazy
-  }, LearnerBuilder, LearningStrategy},
-  tensor::Transaction
+  backend::NdArray, data::{dataloader::{DataLoader, DataLoaderBuilder}, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
+    Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
+  }, LearnerBuilder, LearningStrategy}
 };
 use anyhow::Result;
 
@@ -86,8 +85,10 @@ impl TrainingConfig {
     let learner = LearnerBuilder::new(&self.artifact_path)
       .metric_train_numeric(LossMetric::new())
       .metric_train(CudaMetric::new())
+      .metric_train(CpuUse::new())
       .metric_valid_numeric(LossMetric::new())
       .metric_valid(CudaMetric::new())
+      .metric_valid(CpuUse::new())
       .with_file_checkpointer(DefaultRecorder::new())
       .learning_strategy(LearningStrategy::SingleDevice(device.clone()))
       .num_epochs(self.epochs)
@@ -103,13 +104,6 @@ impl TrainingConfig {
       .save_file(format!("{}/model", self.artifact_path), &DefaultRecorder::new())
       .expect("could not fit model");
   }
-}
-
-fn init_artifact_dir(path: &str) -> Result<()> {
-  std::fs::remove_dir_all(path)?;
-  std::fs::create_dir_all(path)?;
-
-  Ok(())
 }
 
 /// Embedding output for adapted to multiple metrics for training
@@ -137,6 +131,12 @@ impl<B: Backend> Adaptor<LossInput<B>> for EmbeddingOutput<B> {
 impl<B: Backend> Adaptor<CudaMetric> for EmbeddingOutput<B> {
   fn adapt(&self) -> CudaMetric {
     CudaMetric::new()
+  }
+}
+
+impl<B: Backend> Adaptor<CpuUse> for EmbeddingOutput<B> {
+  fn adapt(&self) -> CpuUse {
+    CpuUse::new()
   }
 }
 

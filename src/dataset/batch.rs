@@ -4,10 +4,11 @@
 use burn::{
   prelude::*,
   data::dataloader::batcher::Batcher,
-  tensor::Transaction
 };
 
-use crate::dataset::{ContextItem};
+use crate::{
+  dataset::{IpContext, ContextItem}
+};
 
 /// Batch of samples derived from [IpContext] into [Tensor]s
 #[derive(Debug, Clone)]
@@ -49,35 +50,48 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
   fn batch(&self, items: Vec<ContextItem>, device: &B::Device) -> ContextBatch<B> {
     let batch_size = items.len();
 
-    // Collect sample targets and move to GPU
-    let sample_tensors = items.iter().cloned()
-      .map(|i| i.target).collect::<Vec<_>>();
-    let samples = Tensor::from_data(
-      Tensor::stack::<2>(sample_tensors, 0).into_data()
-    , device);
+    let mut sample_buffer = Vec::with_capacity(items.len());
+    let mut context_buffer = Vec::with_capacity(items.len() * self.context_window);
+    let mut mask_buffer = Vec::with_capacity(items.len() * self.context_window);
 
-    let mut contexts: Tensor<B, 3> =
-      Tensor::zeros([batch_size, self.context_window, samples.dims()[1]], device);
-    let mut context_mask = Tensor::zeros([batch_size, self.context_window], device);
+    for item in items {
+      let sample = item.target.encode();
+      let sample_size = sample.len();
 
-    // Batch synchronization from CPU to GPU of contexts with a transaction
-    let mut transaction = Transaction::default();
-    for item in items.into_iter() {
-      transaction = transaction.register(item.context);
+      let context_num = item.context.len();
+
+      sample_buffer.extend(sample);
+
+      mask_buffer.extend(vec![1; context_num]);
+
+      for context in item.context {
+        context_buffer.extend(context.encode());
+      }
+
+      if context_num < self.context_window {
+        let remainder = self.context_window - context_num;
+
+
+        context_buffer.extend(vec![0.0; remainder * sample_size]);
+        mask_buffer.extend(vec![0; remainder]);
+      } else if context_num > self.context_window {
+        let remainder = context_num - self.context_window;
+
+        context_buffer.truncate(context_buffer.len() - (remainder * sample_size));
+        mask_buffer.truncate(mask_buffer.len() - remainder);
+      }
     }
 
-    // Execute sync
-    let context_data = transaction.execute();
+    let sample_dims = [batch_size, sample_buffer.len() / batch_size];
 
-    for (i, data) in context_data.into_iter().enumerate() {
-      let context_tensor: Tensor<B, 2> = Tensor::from_data(data, device);
-      let dims = context_tensor.dims();
-      
-      // Assign contexts to plane on 3D vector, unsqueezing for compatibility
-      contexts = contexts.slice_assign(s![i], context_tensor.unsqueeze::<3>());
-      // Toggle mask bits from 0 until number of contexts
-      context_mask = context_mask.slice_fill(s![i, 0..dims[0]], 1);
-    }
+    let samples =
+      Tensor::<B, 1>::from_floats(sample_buffer.as_slice(), device)
+        .reshape(sample_dims);
+
+    let contexts = Tensor::<B, 1>::from_floats(context_buffer.as_slice(), device)
+      .reshape([batch_size, self.context_window, sample_dims[1]]);
+    let context_mask = Tensor::<B, 1, Int>::from_ints(mask_buffer.as_slice(), device)
+      .reshape([batch_size, self.context_window]);
 
     ContextBatch { samples, contexts, context_mask }
   }
