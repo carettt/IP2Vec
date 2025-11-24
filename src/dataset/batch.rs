@@ -6,9 +6,7 @@ use burn::{
   data::dataloader::batcher::Batcher,
 };
 
-use crate::{
-  dataset::{IpContext, ContextItem}
-};
+use crate::dataset::ContextItem;
 
 /// Batch of samples derived from [IpContext] into [Tensor]s
 #[derive(Debug, Clone)]

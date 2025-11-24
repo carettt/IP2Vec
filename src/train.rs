@@ -1,16 +1,17 @@
 //! Module containing training functionality such as metrics
 
-use crate::{dataset::{batch::{ContextBatch, ContextBatcher}, ContextItem, Ip2VecDataset}, model::Ip2VecConfig};
+use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, model::Ip2VecConfig};
 
-use std::sync::Arc;
 
 use burn::{
-  backend::NdArray, data::{dataloader::{DataLoader, DataLoaderBuilder}, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
+  backend::NdArray, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
     Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
   }, LearnerBuilder, LearningStrategy}
 };
 use anyhow::Result;
 
+/// Struct containing various training parameters, including optimizer and model
+/// configuration objects ([Ip2VecConfig], [SgdConfig])
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
   artifact_path: String,
@@ -19,7 +20,7 @@ pub struct TrainingConfig {
   optimizer: SgdConfig,
 
   #[config(default = 1)]
-  pub seed: u64,
+  seed: u64,
   #[config(default = 10)]
   epochs: usize,
   #[config(default = 0.6)]
@@ -33,6 +34,7 @@ pub struct TrainingConfig {
 }
 
 impl TrainingConfig {
+  /// Clear previous training data from `artifact_path` and seed RNG
   pub fn init<B: Backend>(&self, device: &B::Device) -> Result<()> {
     std::fs::remove_dir_all(&self.artifact_path)?;
     std::fs::create_dir_all(&self.artifact_path)?;
@@ -62,8 +64,10 @@ impl TrainingConfig {
     (train, test)
   }
 
+  /// Train model using parameters configured with [TrainingConfig]
   pub fn train<B: AutodiffBackend>(&self, dataset: Ip2VecDataset, device: &B::Device)
   {
+    // Initialize dataset & dataloaders w/ batcher
     let (train, test) = self.split_dataset::<B, _>(dataset);
 
     let batcher = ContextBatcher::default();
@@ -82,6 +86,7 @@ impl TrainingConfig {
         .num_workers(self.threads)
         .build(test);
 
+    // Initialize learner with metrics
     let learner = LearnerBuilder::new(&self.artifact_path)
       .metric_train_numeric(LossMetric::new())
       .metric_train(CudaMetric::new())
@@ -99,6 +104,7 @@ impl TrainingConfig {
         self.learning_rate
       );
 
+    // Fit model and validate
     learner.fit(dataloader_train, dataloader_test)
       .model
       .save_file(format!("{}/model", self.artifact_path), &DefaultRecorder::new())

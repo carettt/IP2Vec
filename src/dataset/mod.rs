@@ -11,7 +11,6 @@ use indexmap::IndexSet;
 use anyhow::{Result, Context, bail};
 use serde::Deserialize;
 use burn::{
-  prelude::*,
   data::dataset::Dataset
 };
 
