@@ -6,7 +6,7 @@
 //! (Mikolov et al., 2013) embedding algorithm
 
 /// Type alias for 32-bit Cuda backend used for most tensor operations
-pub type Cuda = burn::backend::Cuda<f32, i32>;
+pub type Tch = burn::backend::Libtorch<f32>;
 
 pub mod dataset;
 pub mod model;

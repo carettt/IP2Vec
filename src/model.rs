@@ -117,12 +117,12 @@ impl <B: Backend> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{Cuda, dataset::batch::ContextBatch};
+  use crate::{Tch, dataset::batch::ContextBatch};
 
   use proptest::prelude::*;
   use burn::backend::cuda::CudaDevice;
 
-  fn batch_strategy() -> impl Strategy<Value = ContextBatch<Cuda>> {
+  fn batch_strategy() -> impl Strategy<Value = ContextBatch<Tch>> {
     let device = CudaDevice::new(0);
 
     prop::collection::vec(
@@ -138,9 +138,9 @@ mod tests {
       let flattened: Vec<i32> = vec.into_iter().flatten().collect();
       let target_data = TensorData::new(flattened, [batch_size, 34]);
 
-      let target: Tensor<Cuda, 2> =
+      let target: Tensor<Tch, 2> =
         Tensor::from_data(target_data, &device);
-      let mut contexts: Tensor<Cuda, 3> = 
+      let mut contexts: Tensor<Tch, 3> = 
         Tensor::zeros([batch_size, context_window, target.dims()[1]], &device);
       let mut context_mask = Tensor::zeros([batch_size, context_window], &device);
 
@@ -165,7 +165,7 @@ mod tests {
       let batch_size = batch.samples.dims()[0];
       let embed_dim = config.src_ip_embed_dim + config.dst_port_embed_dim + config.protocol_embed_dim;
 
-      let model = config.init::<Cuda>(&device);
+      let model = config.init::<Tch>(&device);
 
       let output = model.embed(batch.samples, batch.contexts, batch.context_mask);
 

@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use burn::{backend::{cuda::CudaDevice, Autodiff}, optim::SgdConfig};
 use ip2vec::{
-  dataset::Ip2VecDataset, model::Ip2VecConfig, train::TrainingConfig, Cuda
+  dataset::Ip2VecDataset, model::Ip2VecConfig, train::TrainingConfig, Tch
 };
 
 fn main() -> Result<()> {
@@ -18,8 +18,8 @@ fn main() -> Result<()> {
 
   let dataset = Ip2VecDataset::import_dataset("../NF-UNSW-NB15-v3/data/NF-UNSW-NB15-v3.csv")?;
 
-  trainer.init::<Cuda>(&device)?;
-  trainer.train::<Autodiff<Cuda>>(dataset, &device);
+  trainer.init::<Tch>(&device)?;
+  trainer.train::<Autodiff<Tch>>(dataset, &device);
 
   Ok(())
 }
