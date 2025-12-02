@@ -1,12 +1,12 @@
 use anyhow::Result;
 
-use burn::{backend::{cuda::CudaDevice, Autodiff}, optim::SgdConfig};
+use burn::{backend::{libtorch::LibTorchDevice, Autodiff}, optim::SgdConfig};
 use ip2vec::{
   dataset::Ip2VecDataset, model::Ip2VecConfig, train::TrainingConfig, Tch
 };
 
 fn main() -> Result<()> {
-  let device = CudaDevice::new(0);
+  let device = LibTorchDevice::Cuda(0);
 
   let trainer = TrainingConfig::new(
     String::from("/home/caret/Documents/cmp400/model"),
