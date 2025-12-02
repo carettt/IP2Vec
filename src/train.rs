@@ -1,6 +1,6 @@
 //! Module containing training functionality such as metrics
 
-use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, model::Ip2VecConfig};
+use crate::{Tch, dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, model::Ip2VecConfig};
 
 
 use burn::{
@@ -147,9 +147,9 @@ impl<B: Backend> Adaptor<CpuUse> for EmbeddingOutput<B> {
 }
 
 impl<B: Backend> ItemLazy for EmbeddingOutput<B> {
-  type ItemSync = EmbeddingOutput<NdArray>;
+  type ItemSync = EmbeddingOutput<Tch>;
 
-  fn sync(self) -> EmbeddingOutput<NdArray> {
+  fn sync(self) -> EmbeddingOutput<Tch> {
     let [embeddings, loss] = Transaction::default()
       .register(self.embeddings)
       .register(self.loss)
@@ -157,7 +157,7 @@ impl<B: Backend> ItemLazy for EmbeddingOutput<B> {
       .try_into()
       .expect("could not sync embedding output");
 
-    let device = &Default::default();
+    let device = &burn::backend::libtorch::LibTorchDevice::Cuda(1);
 
     EmbeddingOutput {
       embeddings: Tensor::from_data(embeddings, device),
