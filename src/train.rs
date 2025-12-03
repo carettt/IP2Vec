@@ -4,7 +4,7 @@ use crate::{Tch, dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, m
 
 
 use burn::{
-  backend::NdArray, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
+  data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
     Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
   }, LearnerBuilder, LearningStrategy}
 };

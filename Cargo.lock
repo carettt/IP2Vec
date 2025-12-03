@@ -204,7 +204,6 @@ dependencies = [
  "burn-cpu",
  "burn-cuda",
  "burn-ir",
- "burn-ndarray",
  "burn-nn",
  "burn-optim",
  "burn-rocm",

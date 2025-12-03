@@ -13,7 +13,7 @@ csv = "~1.4"
 
 burn = { version = "~0.19", features = [
   "train", "tui", "metrics",
-  "ndarray", "tch", "fusion", "autodiff"
+  "tch", "fusion", "autodiff"
 ], default-features = false }
 
 [dev-dependencies]
