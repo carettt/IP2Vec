@@ -104,7 +104,7 @@ mod tests {
 
   use proptest::prelude::*;
   use burn::{
-    backend::cuda::CudaDevice,
+    backend::libtorch::LibTorchDevice,
     data::dataset::Dataset,
     data::dataloader::batcher::Batcher,
   };
@@ -114,11 +114,11 @@ mod tests {
     fn batch_shape(
       dataset in any::<Ip2VecDataset>()
     ) {
-      type Backend = burn::backend::Cuda<f32, i32>;
+      type Backend = burn::backend::LibTorch<f32>;
 
       let mut valid = true;
 
-      let device = CudaDevice::new(0);
+      let device = LibTorchDevice::Cuda(0);
 
       let num_batches = (dataset.len() + 1) / 2;
 
@@ -163,11 +163,11 @@ mod tests {
     fn batch_device(
       dataset in any::<Ip2VecDataset>()
     ) {
-      type Backend = burn::backend::Cuda<f32, i32>;
+      type Backend = burn::backend::LibTorch<f32>;
 
       let mut valid = true;
 
-      let device = CudaDevice::new(0);
+      let device = LibTorchDevice::Cuda(0);
 
       let num_batches = (dataset.len() + 1) / 2;
 

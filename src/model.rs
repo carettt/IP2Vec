@@ -120,10 +120,10 @@ mod tests {
   use crate::{Tch, dataset::batch::ContextBatch};
 
   use proptest::prelude::*;
-  use burn::backend::cuda::CudaDevice;
+  use burn::backend::libtorch::LibTorchDevice;
 
   fn batch_strategy() -> impl Strategy<Value = ContextBatch<Tch>> {
-    let device = CudaDevice::new(0);
+    let device = LibTorchDevice::Cuda(0);
 
     prop::collection::vec(
       prop::collection::vec(
@@ -158,7 +158,7 @@ mod tests {
   proptest! {
     #[test]
     fn output_shape(batch in batch_strategy()) {
-      let device = CudaDevice::new(0);
+      let device = LibTorchDevice::Cuda(0);
 
       let config = Ip2VecConfig::new();
 

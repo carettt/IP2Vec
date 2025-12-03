@@ -9,9 +9,8 @@
     };
   };
 
-  outputs = { self, nixpkgs, fenix, ... }: let
+  outputs = { nixpkgs, fenix, ... }: let
     system = "x86_64-linux";
-
     pkgs = import nixpkgs {
       inherit system;
       config = {
@@ -22,6 +21,7 @@
 
     toolchain = fenix.packages.${system}.stable.defaultToolchain;
 
+    libtorch = pkgs.callPackage ./libtorch.nix {};
     nsight_systems = pkgs.callPackage ./nsight_systems.nix {};
   in {
     devShells.${system}.default = pkgs.mkShell rec {
@@ -34,7 +34,8 @@
       ];
 
       buildInputs = [
-        pkgs.cudaPackages.cudatoolkit
+        libtorch
+        pkgs.stdenv.cc.cc.lib
         pkgs.linuxPackages.nvidia_x11
       ];
 
@@ -45,7 +46,7 @@
       LD_LIBRARY_PATH =
         pkgs.lib.makeLibraryPath (nativeBuildInputs ++ buildInputs);
 
-      CUDA_PATH = "${pkgs.cudaPackages.cudatoolkit}";
+      LIBTORCH = "${libtorch}/";
     };
   };
 }
