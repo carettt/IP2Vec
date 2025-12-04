@@ -31,6 +31,9 @@ pub struct TrainingConfig {
   threads: usize,
   #[config(default = 1.0e-4)]
   learning_rate: f64,
+  
+  #[config(default = 15)]
+  context_window: usize,
 }
 
 impl TrainingConfig {
@@ -70,7 +73,7 @@ impl TrainingConfig {
     // Initialize dataset & dataloaders w/ batcher
     let (train, test) = self.split_dataset::<B, _>(dataset);
 
-    let batcher = ContextBatcher::default();
+    let batcher = ContextBatcher::new(self.context_window);
 
     let dataloader_train =
       DataLoaderBuilder::new(batcher.clone())

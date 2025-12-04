@@ -57,10 +57,16 @@ impl IpContext {
 
 /// Encoded IPContext into target tensor of shape [34] and context tensor of
 /// shape [context_window, 34]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct ContextItem {
   target: IpContext,
   context: Vec<IpContext>
+}
+
+impl PartialEq for ContextItem {
+  fn eq(&self, other: &Self) -> bool {
+    self.target == other.target
+  }
 }
 
 /// Struct containing indexed set of [IpContext] and a conversion map for fetching

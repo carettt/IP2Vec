@@ -89,7 +89,8 @@ impl<B: Backend> Ip2Vec<B> {
     let context: Tensor<B, 2> = self.forward(context.flatten(0, 1));
 
     // Flatten mask and convert to 0 to -1
-    let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
+    //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
+    let mask: Tensor<B, 1, Int> = mask.flatten(0, 1);
 
     let loss = CosineEmbeddingLossConfig::new()
       .with_margin(0.5)

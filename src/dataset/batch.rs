@@ -36,11 +36,16 @@ pub struct ContextBatcher {
   context_window: usize
 }
 
+impl ContextBatcher {
+  /// Create new [ContextBatcher] with `context_window` for batch generation
+  pub fn new(context_window: usize) -> Self {
+    Self { context_window }
+  }
+}
+
 impl Default for ContextBatcher {
   fn default() -> Self {
-    Self {
-      context_window: 4
-    }
+    Self::new(15)
   }
 }
 
@@ -48,36 +53,52 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
   fn batch(&self, items: Vec<ContextItem>, device: &B::Device) -> ContextBatch<B> {
     let batch_size = items.len();
 
+    let positive_count = self.context_window / 3;
+    let mut negative_count = self.context_window - positive_count;
+
     let mut sample_buffer = Vec::with_capacity(items.len());
     let mut context_buffer = Vec::with_capacity(items.len() * self.context_window);
     let mut mask_buffer = Vec::with_capacity(items.len() * self.context_window);
 
-    for item in items {
+    for item in items.iter() {
       let sample = item.target.encode();
-      let sample_size = sample.len();
 
       let context_num = item.context.len();
 
+      if context_num < positive_count {
+        negative_count += positive_count - context_num;
+      }
+
       sample_buffer.extend(sample);
 
+
+      // Positive samples
+      for i in 0..context_num {
+        context_buffer.extend(item.context[i].encode());
+      }
       mask_buffer.extend(vec![1; context_num]);
 
-      for context in item.context {
-        context_buffer.extend(context.encode());
-      }
+      // Negative samples
+      let negative_samples = items.iter().cloned()
+        .filter(|i| (i != item) && !(item.context.contains(&i.target)))
+        .take(negative_count)
+        .flat_map(|i| i.target.encode())
+        .collect::<Vec<_>>();
+      context_buffer.extend(negative_samples);
+      mask_buffer.extend(vec![-1; negative_count]);
 
-      if context_num < self.context_window {
-        let remainder = self.context_window - context_num;
+      //if context_num < self.context_window {
+      //  let remainder = self.context_window - context_num;
 
 
-        context_buffer.extend(vec![0.0; remainder * sample_size]);
-        mask_buffer.extend(vec![0; remainder]);
-      } else if context_num > self.context_window {
-        let remainder = context_num - self.context_window;
+      //  context_buffer.extend(vec![0.0; remainder * sample_size]);
+      //  mask_buffer.extend(vec![0; remainder]);
+      //} else if context_num > self.context_window {
+      //  let remainder = context_num - self.context_window;
 
-        context_buffer.truncate(context_buffer.len() - (remainder * sample_size));
-        mask_buffer.truncate(mask_buffer.len() - remainder);
-      }
+      //  context_buffer.truncate(context_buffer.len() - (remainder * sample_size));
+      //  mask_buffer.truncate(mask_buffer.len() - remainder);
+      //}
     }
 
     let sample_dims = [batch_size, sample_buffer.len() / batch_size];
