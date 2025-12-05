@@ -58,7 +58,7 @@ pub struct Ip2Vec<B: Backend> {
 }
 
 impl<B: Backend> Ip2Vec<B> {
-  fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
+  fn embed(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
     let src_ip_proj = self.activation.forward(
       self.src_ip_input.forward(input.clone().narrow(1, 0, 32)));
     let dst_port_proj = self.activation.forward(
@@ -72,13 +72,13 @@ impl<B: Backend> Ip2Vec<B> {
   }
 
   /// Flatten batch fields, perform forward passes and compute loss
-  pub fn embed(
+  pub fn forward(
     &self,
     targets: Tensor<B, 2>,
     context: Tensor<B, 3>,
     mask: Tensor<B, 2, Int>
   ) -> EmbeddingOutput<B> {
-    let embeddings = self.forward(targets.clone());
+    let embeddings = self.embed(targets.clone());
 
     let context_window = mask.dims()[1];
 
@@ -86,7 +86,7 @@ impl<B: Backend> Ip2Vec<B> {
     let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
       .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
 
-    let context: Tensor<B, 2> = self.forward(context.flatten(0, 1));
+    let context: Tensor<B, 2> = self.embed(context.flatten(0, 1));
 
     // Flatten mask and convert to 0 to -1
     //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
@@ -103,7 +103,7 @@ impl<B: Backend> Ip2Vec<B> {
 
 impl<B: AutodiffBackend> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
   fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
-    let output = self.embed(batch.samples, batch.contexts, batch.context_mask);
+    let output = self.forward(batch.samples, batch.contexts, batch.context_mask);
 
     TrainOutput::new(self, output.loss.backward(), output)
   }
@@ -111,7 +111,7 @@ impl<B: AutodiffBackend> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2V
 
 impl <B: Backend> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
   fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
-    self.embed(batch.samples, batch.contexts, batch.context_mask)
+    self.forward(batch.samples, batch.contexts, batch.context_mask)
   }
 }
 
@@ -168,7 +168,7 @@ mod tests {
 
       let model = config.init::<Tch>(&device);
 
-      let output = model.embed(batch.samples, batch.contexts, batch.context_mask);
+      let output = model.forward(batch.samples, batch.contexts, batch.context_mask);
 
       prop_assert_eq!(output.embeddings.dims(), [batch_size, embed_dim]);
     }
