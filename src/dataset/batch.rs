@@ -45,7 +45,7 @@ impl ContextBatcher {
 
 impl Default for ContextBatcher {
   fn default() -> Self {
-    Self::new(15)
+    Self::new(5)
   }
 }
 
@@ -62,6 +62,8 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
 
       let positive_count = item.context.len();
       let negative_count = positive_count * self.neg_multiplier;
+
+      let total_contexts = positive_count + negative_count;
 
       let mut target_buffer = Vec::with_capacity(positive_count + negative_count);
 
@@ -82,7 +84,7 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       eprintln!("target buffer len: {}", target_buffer.len());
 
       let targets: Tensor<B, 2> = Tensor::<B, 1>::from_floats(target_buffer.as_slice(), device)
-        .reshape([item.context.len(), target_buffer.len() / item.context.len()]);
+        .reshape([total_contexts, target_buffer.len() / total_contexts]);
 
       // Update batch
       sample_buffer.extend(sample);
