@@ -75,18 +75,23 @@ impl<B: Backend> Ip2Vec<B> {
   pub fn forward(
     &self,
     targets: Tensor<B, 2>,
-    context: Tensor<B, 3>,
-    mask: Tensor<B, 2, Int>
+    context: Vec<Tensor<B, 2>>,
+    mask: Tensor<B, 1, Int>
   ) -> EmbeddingOutput<B> {
-    let embeddings = self.embed(targets.clone());
-
-    let context_window = mask.dims()[1];
+    let embeddings = self.embed(targets.clone()); // [batch_size, 150]
 
     // Repeat each row contiguously for every context
-    let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
-      .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
+    //let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
+    //  .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
+    let mut duplicated_embeddings: Vec<Tensor<B, 2>> = Vec::with_capacity(context.len());
 
-    let context: Tensor<B, 2> = self.embed(context.flatten(0, 1));
+    for context in context.iter() {
+      duplicated_embeddings.push(embeddings.clone().repeat_dim(0, context.dims()[0]));
+    }
+
+    //let context: Tensor<B, 2> = self.embed(context);
+    let expanded_embeddings: Tensor<B, 2> = Tensor::cat(duplicated_embeddings, 0);
+    let context: Tensor<B, 2> = self.embed(Tensor::cat(context, 0));
 
     // Flatten mask and convert to 0 to -1
     //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;

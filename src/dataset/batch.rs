@@ -13,18 +13,18 @@ use crate::dataset::ContextItem;
 pub struct ContextBatch<B: Backend> {
   /// 2D tensor of shape [batch_size, 34]
   pub samples: Tensor<B, 2>,
-  /// 3D tensor of shape [batch_size, context_window, 34]
-  pub contexts: Tensor<B, 3>,
-  /// 2D tensor of shape [batch_size, context_window]
-  pub context_mask: Tensor<B, 2, Int>
+  /// 2D jagged tensor of shape [context_num, 34]
+  pub contexts: Vec<Tensor<B, 2>>,
+  /// 1D tensor of shape [context_num]
+  pub context_mask: Tensor<B, 1, Int>
 }
 
 impl<B: Backend> ContextBatch<B> {
   /// Helper function to create a new batch for testing (shouldn't be used)
   pub fn new(
     samples: Tensor<B, 2>,
-    contexts: Tensor<B, 3>,
-    context_mask: Tensor<B, 2, Int>
+    contexts: Vec<Tensor<B, 2>>,
+    context_mask: Tensor<B, 1, Int>
   ) -> Self {
     Self { samples, contexts, context_mask }
   }
@@ -33,13 +33,13 @@ impl<B: Backend> ContextBatch<B> {
 /// Struct implementing [Batcher] to transform [Dataset] into [ContextBatch]es.
 #[derive(Clone)]
 pub struct ContextBatcher {
-  context_window: usize
+  neg_multiplier: usize
 }
 
 impl ContextBatcher {
   /// Create new [ContextBatcher] with `context_window` for batch generation
-  pub fn new(context_window: usize) -> Self {
-    Self { context_window }
+  pub fn new(neg_multiplier: usize) -> Self {
+    Self { neg_multiplier }
   }
 }
 
@@ -53,38 +53,42 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
   fn batch(&self, items: Vec<ContextItem>, device: &B::Device) -> ContextBatch<B> {
     let batch_size = items.len();
 
-    let positive_count = self.context_window / 3;
-    let mut negative_count = self.context_window - positive_count;
-
     let mut sample_buffer = Vec::with_capacity(items.len());
-    let mut context_buffer = Vec::with_capacity(items.len() * self.context_window);
-    let mut mask_buffer = Vec::with_capacity(items.len() * self.context_window);
+    let mut contexts = Vec::with_capacity(items.len() * self.neg_multiplier); // variable total contexts, best guess
+    let mut mask_buffer = Vec::with_capacity(items.len() * self.neg_multiplier); // variable total contexts, best guess
 
     for item in items.iter() {
       let sample = item.target.encode();
 
-      let context_num = item.context.len();
+      let positive_count = item.context.len();
+      let negative_count = positive_count * self.neg_multiplier;
 
-      if context_num < positive_count {
-        negative_count += positive_count - context_num;
+      let mut target_buffer = Vec::with_capacity(positive_count + negative_count);
+
+      // Positive targets
+      for positive in item.context.iter() {
+        target_buffer.extend(positive.encode());
       }
 
-      sample_buffer.extend(sample);
-
-
-      // Positive samples
-      for i in 0..context_num {
-        context_buffer.extend(item.context[i].encode());
-      }
-      mask_buffer.extend(vec![1; context_num]);
-
-      // Negative samples
-      let negative_samples = items.iter().cloned()
-        .filter(|i| (i != item) && !(item.context.contains(&i.target)))
+      // Negative targets
+      target_buffer.extend(items.iter()
+        .filter(|i| (*i != item) && !(item.context.contains(&i.target)))
         .take(negative_count)
         .flat_map(|i| i.target.encode())
-        .collect::<Vec<_>>();
-      context_buffer.extend(negative_samples);
+        .collect::<Vec<_>>());
+
+      eprintln!("positive : negative");
+      eprintln!("{positive_count} : {negative_count}");
+      eprintln!("target buffer len: {}", target_buffer.len());
+
+      let targets: Tensor<B, 2> = Tensor::<B, 1>::from_floats(target_buffer.as_slice(), device)
+        .reshape([item.context.len(), target_buffer.len() / item.context.len()]);
+
+      // Update batch
+      sample_buffer.extend(sample);
+      contexts.push(targets);
+
+      mask_buffer.extend(vec![1; positive_count]);
       mask_buffer.extend(vec![-1; negative_count]);
 
       //if context_num < self.context_window {
@@ -99,6 +103,7 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       //  context_buffer.truncate(context_buffer.len() - (remainder * sample_size));
       //  mask_buffer.truncate(mask_buffer.len() - remainder);
       //}
+      eprintln!("batch_size: {batch_size}");
     }
 
     let sample_dims = [batch_size, sample_buffer.len() / batch_size];
@@ -107,12 +112,9 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       Tensor::<B, 1>::from_floats(sample_buffer.as_slice(), device)
         .reshape(sample_dims);
 
-    let contexts = Tensor::<B, 1>::from_floats(context_buffer.as_slice(), device)
-      .reshape([batch_size, self.context_window, sample_dims[1]]);
-    let context_mask = Tensor::<B, 1, Int>::from_ints(mask_buffer.as_slice(), device)
-      .reshape([batch_size, self.context_window]);
+    let context_mask = Tensor::<B, 1, Int>::from_ints(mask_buffer.as_slice(), device);
 
-    ContextBatch { samples, contexts, context_mask }
+    ContextBatch::new(samples, contexts, context_mask)
   }
 }
 
