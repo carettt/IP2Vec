@@ -79,10 +79,6 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
         .flat_map(|i| i.target.encode())
         .collect::<Vec<_>>());
 
-      eprintln!("positive : negative");
-      eprintln!("{positive_count} : {negative_count}");
-      eprintln!("target buffer len: {}", target_buffer.len());
-
       let targets: Tensor<B, 2> = Tensor::<B, 1>::from_floats(target_buffer.as_slice(), device)
         .reshape([target_buffer.len() / dim, dim]);
 
@@ -105,7 +101,6 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       //  context_buffer.truncate(context_buffer.len() - (remainder * sample_size));
       //  mask_buffer.truncate(mask_buffer.len() - remainder);
       //}
-      eprintln!("batch_size: {batch_size}");
     }
 
     let sample_dims = [batch_size, sample_buffer.len() / batch_size];
