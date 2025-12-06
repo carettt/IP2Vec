@@ -8,10 +8,7 @@ use crate::{
 };
 
 use burn::{
-  prelude::*,
-  nn::loss::CosineEmbeddingLossConfig,
-  tensor::backend::AutodiffBackend,
-  train::{TrainStep, TrainOutput, ValidStep}
+  backend::libtorch::LibTorchDevice, nn::loss::CosineEmbeddingLossConfig, prelude::*, tensor::{backend::AutodiffBackend, Transaction}, train::{TrainOutput, TrainStep, ValidStep}
 };
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
@@ -85,8 +82,11 @@ impl<B: Backend> Ip2Vec<B> {
     //  .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
     let mut duplicated_embeddings: Vec<Tensor<B, 2>> = Vec::with_capacity(context.len());
 
-    for context in context.iter() {
-      duplicated_embeddings.push(embeddings.clone().repeat_dim(0, context.dims()[0]));
+    eprintln!("context_len: {}, embedding_len: {}", context.len(), embeddings.dims()[0]);
+
+    for (i, context) in context.iter().enumerate() {
+      duplicated_embeddings.push(embeddings.clone().slice(s![i, ..])
+        .repeat_dim(0, context.dims()[0]));
     }
 
     //let context: Tensor<B, 2> = self.embed(context);
@@ -95,7 +95,8 @@ impl<B: Backend> Ip2Vec<B> {
 
     // Flatten mask and convert to 0 to -1
     //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
-    let mask: Tensor<B, 1, Int> = mask.flatten(0, 1);
+
+    eprintln!("expanded: {}, context: {}, mask: {}", expanded_embeddings.dims()[0], context.dims()[0], mask.dims()[0]);
 
     let loss = CosineEmbeddingLossConfig::new()
       .with_margin(0.5)
@@ -106,17 +107,69 @@ impl<B: Backend> Ip2Vec<B> {
   }
 }
 
-impl<B: AutodiffBackend> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
+impl<B> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> 
+where 
+  B: AutodiffBackend<Device = LibTorchDevice>
+{
   fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
-    let output = self.forward(batch.samples, batch.contexts, batch.context_mask);
+    let gpu_device = LibTorchDevice::Cuda(0);
+
+    let [sample_data, context_mask_data] = Transaction::default()
+      .register(batch.samples)
+      .register(batch.context_mask)
+      .execute()
+      .try_into()
+      .expect("failed to sync batch to GPU");
+
+    let samples = Tensor::from_data(sample_data, &gpu_device);
+    let context_mask = Tensor::from_data(context_mask_data, &gpu_device);
+
+    let mut context_transaction = Transaction::default();
+    for context in batch.contexts {
+      context_transaction = context_transaction.register(context);
+    }
+    let context_data = context_transaction.execute();
+
+    let mut contexts = Vec::with_capacity(context_data.len());
+    for data in context_data {
+      contexts.push(Tensor::from_data(data, &gpu_device));
+    }
+
+    let output = self.forward(samples, contexts, context_mask);
 
     TrainOutput::new(self, output.loss.backward(), output)
   }
 }
 
-impl <B: Backend> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> {
+impl <B> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B>
+where 
+  B: Backend<Device = LibTorchDevice>
+{
   fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
-    self.forward(batch.samples, batch.contexts, batch.context_mask)
+    let gpu_device = LibTorchDevice::Cuda(0);
+
+    let [sample_data, context_mask_data] = Transaction::default()
+      .register(batch.samples)
+      .register(batch.context_mask)
+      .execute()
+      .try_into()
+      .expect("failed to sync batch to GPU");
+
+    let samples: Tensor<B, 2> = Tensor::from_data(sample_data, &gpu_device);
+    let context_mask: Tensor<B, 1, Int> = Tensor::from_data(context_mask_data, &gpu_device);
+
+    let mut context_transaction = Transaction::default();
+    for context in batch.contexts {
+      context_transaction = context_transaction.register(context);
+    }
+    let context_data = context_transaction.execute();
+
+    let mut contexts: Vec<Tensor<B, 2>> = Vec::with_capacity(context_data.len());
+    for data in context_data {
+      contexts.push(Tensor::from_data(data, &gpu_device));
+    }
+
+    self.forward(samples, contexts, context_mask)
   }
 }
 

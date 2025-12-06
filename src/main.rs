@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     String::from("/home/jovyan/work/model"),
     Ip2VecConfig::new(),
     SgdConfig::new())
-      .with_batch_size(4096)
+      .with_batch_size(64)
       .with_epochs(20)
       .with_learning_rate(1.0e-3)
       .with_threads(128);

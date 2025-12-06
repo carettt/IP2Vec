@@ -87,7 +87,7 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       contexts.push(targets);
 
       mask_buffer.extend(vec![1; positive_count]);
-      mask_buffer.extend(vec![-1; negative_count]);
+      mask_buffer.extend(vec![-1; (target_buffer.len() / dim) - positive_count]);
 
       //if context_num < self.context_window {
       //  let remainder = self.context_window - context_num;

@@ -4,7 +4,7 @@ use crate::{Tch, dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, m
 
 
 use burn::{
-  data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
+  backend::libtorch::LibTorchDevice, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
     Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
   }, LearnerBuilder, LearningStrategy}
 };
@@ -68,18 +68,22 @@ impl TrainingConfig {
   }
 
   /// Train model using parameters configured with [TrainingConfig]
-  pub fn train<B: AutodiffBackend>(&self, dataset: Ip2VecDataset, device: &B::Device)
+  pub fn train<B>(&self, dataset: Ip2VecDataset, device: &B::Device)
+  where 
+    B: AutodiffBackend<Device = LibTorchDevice>,
   {
     // Initialize dataset & dataloaders w/ batcher
     let (train, test) = self.split_dataset::<B, _>(dataset);
 
     let batcher = ContextBatcher::new(self.context_window);
+    let cpu_device = LibTorchDevice::Cpu;
 
     let dataloader_train =
       DataLoaderBuilder::new(batcher.clone())
         .batch_size(self.batch_size)
         .shuffle(self.seed)
         .num_workers(self.threads)
+        .set_device(cpu_device)
         .build(train);
 
     let dataloader_test =
@@ -87,6 +91,7 @@ impl TrainingConfig {
         .batch_size(self.batch_size)
         .shuffle(self.seed)
         .num_workers(self.threads)
+        .set_device(cpu_device)
         .build(test);
 
     // Initialize learner with metrics
