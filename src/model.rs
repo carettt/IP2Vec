@@ -8,7 +8,11 @@ use crate::{
 };
 
 use burn::{
-  backend::libtorch::LibTorchDevice, nn::loss::CosineEmbeddingLossConfig, prelude::*, tensor::{backend::AutodiffBackend, Transaction}, train::{TrainOutput, TrainStep, ValidStep}
+  prelude::*,
+  backend::libtorch::LibTorchDevice,
+  nn::loss::CosineEmbeddingLossConfig,
+  tensor::{backend::AutodiffBackend, Transaction, linalg::l2_norm},
+  train::{TrainOutput, TrainStep, ValidStep}
 };
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
@@ -93,10 +97,14 @@ impl<B: Backend> Ip2Vec<B> {
     let expanded_embeddings: Tensor<B, 2> = Tensor::cat(duplicated_embeddings, 0);
     let context: Tensor<B, 2> = self.embed(Tensor::cat(context, 0));
 
+    // L2 Normalize embedding outputs
+    let expanded_embeddings = l2_norm(expanded_embeddings, 1);
+    let context = l2_norm(context, 1);
+
     // Flatten mask and convert to 0 to -1
     //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
 
-    eprintln!("expanded: {}, context: {}, mask: {}", expanded_embeddings.dims()[0], context.dims()[0], mask.dims()[0]);
+    eprintln!("expanded: {:?}, context: {:?}, mask: {:?}", expanded_embeddings.dims(), context.dims(), mask.dims());
 
     let loss = CosineEmbeddingLossConfig::new()
       .with_margin(0.5)
