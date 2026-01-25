@@ -7,6 +7,7 @@ use std::{
   net::Ipv4Addr,
 };
 
+use derivative::*;
 use indexmap::IndexSet;
 use anyhow::{Result, Context, bail};
 use serde::Deserialize;
@@ -19,11 +20,13 @@ use burn::{
 pub mod batch;
 
 /// Abstract Struct containing contextual information about an IP from a flow
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Derivative, Clone, Deserialize, PartialEq, Eq, Hash)]
+#[derivative(Debug)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct IpContext {
   #[serde(skip, default)]
   #[cfg_attr(test, proptest(value = "Arc::default()"))]
+  #[derivative(Debug="ignore")]
   context_indices: Arc<Vec<usize>>,
 
   #[serde(rename = "IPV4_SRC_ADDR")]

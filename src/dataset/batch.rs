@@ -74,13 +74,17 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
 
       // Negative targets
       target_buffer.extend(items.iter()
-        .filter(|i| (*i != item) && !(item.context.contains(&i.target)))
+        .filter(|i| (**i != *item) && !(item.context.contains(&i.target)))
         .take(negative_count)
-        .flat_map(|i| i.target.encode())
+        .flat_map(|i| {
+          eprintln!("item: {item:?}, neg: {i:?}");
+          i.target.encode()
+        })
         .collect::<Vec<_>>());
 
       let targets: Tensor<B, 2> = Tensor::<B, 1>::from_floats(target_buffer.as_slice(), device)
         .reshape([target_buffer.len() / dim, dim]);
+
 
       // Update batch
       sample_buffer.extend(sample);

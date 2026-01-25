@@ -86,7 +86,7 @@ impl<B: Backend> Ip2Vec<B> {
     //  .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
     let mut duplicated_embeddings: Vec<Tensor<B, 2>> = Vec::with_capacity(context.len());
 
-    eprintln!("context_len: {}, embedding_len: {}", context.len(), embeddings.dims()[0]);
+    //eprintln!("context_len: {}, embedding_len: {}", context.len(), embeddings.dims()[0]);
 
     for (i, context) in context.iter().enumerate() {
       duplicated_embeddings.push(embeddings.clone().slice(s![i, ..])
@@ -98,13 +98,13 @@ impl<B: Backend> Ip2Vec<B> {
     let context: Tensor<B, 2> = self.embed(Tensor::cat(context, 0));
 
     // L2 Normalize embedding outputs
-    let expanded_embeddings = l2_norm(expanded_embeddings, 1);
-    let context = l2_norm(context, 1);
+    //let expanded_embeddings = l2_norm(expanded_embeddings, 1);
+    //let context = l2_norm(context, 1);
 
     // Flatten mask and convert to 0 to -1
     //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
 
-    eprintln!("expanded: {:?}, context: {:?}, mask: {:?}", expanded_embeddings.dims(), context.dims(), mask.dims());
+    //eprintln!("expanded: {:?}, context: {:?}, mask: {:?}", expanded_embeddings.dims(), context.dims(), mask.dims());
 
     let loss = CosineEmbeddingLossConfig::new()
       .with_margin(0.5)

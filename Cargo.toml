@@ -15,6 +15,7 @@ burn = { version = "~0.19", features = [
   "train", "metrics",
   "tch", "fusion", "autodiff"
 ], default-features = false }
+derivative = "2.2.0"
 
 [dev-dependencies]
 proptest = "1.8.0"
