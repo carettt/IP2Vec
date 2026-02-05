@@ -2,9 +2,7 @@
 //! and using the dataset. Currently, only CSV is supported.
 
 use std::{
-  collections::{HashMap, HashSet},
-  sync::Arc,
-  net::Ipv4Addr,
+  collections::{HashMap, HashSet}, net::Ipv4Addr, path::PathBuf, sync::Arc
 };
 
 use derivative::*;
@@ -139,7 +137,7 @@ impl Ip2VecDataset {
   }
 
   /// Function for importing CSV data set from `path`
-  pub fn import_dataset(path: &str) -> Result<Self> {
+  pub fn import_dataset(path: &PathBuf) -> Result<Self> {
     let mut reader = csv::Reader::from_path(path)?;
     let samples = reader.deserialize::<IpContext>().enumerate()
       .map(|(i, result)|

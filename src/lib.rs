@@ -11,3 +11,4 @@ pub type Tch = burn::backend::LibTorch<f32>;
 pub mod dataset;
 pub mod model;
 pub mod train;
+pub mod interface;

@@ -1,5 +1,7 @@
 //! Module containing training functionality such as metrics
 
+use std::path::PathBuf;
+
 use crate::{Tch, dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, model::Ip2VecConfig};
 
 
@@ -10,11 +12,20 @@ use burn::{
 };
 use anyhow::Result;
 
+pub trait ApplyOption: Clone + Sized {
+  fn apply_opt<T>(self, f: impl FnOnce(Self, T) -> Self, val: Option<T>) -> Self {
+    match val {
+      Some(val) => f(self, val),
+      None => self
+    }
+  }
+}
+
 /// Struct containing various training parameters, including optimizer and model
 /// configuration objects ([Ip2VecConfig], [SgdConfig])
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
-  artifact_path: String,
+  artifact_path: PathBuf,
 
   model: Ip2VecConfig,
   optimizer: SgdConfig,
@@ -36,13 +47,23 @@ pub struct TrainingConfig {
   context_window: usize,
 }
 
+impl ApplyOption for TrainingConfig {}
+
 impl TrainingConfig {
   /// Clear previous training data from `artifact_path` and seed RNG
   pub fn init<B: Backend>(&self, device: &B::Device) -> Result<()> {
-    std::fs::remove_dir_all(&self.artifact_path)?;
+    match std::fs::remove_dir_all(&self.artifact_path) {
+      Ok(_) => {}
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Err(e) => return Err(e.into()),
+    };
+
     std::fs::create_dir_all(&self.artifact_path)?;
 
-    self.save(format!("{}/config.json", self.artifact_path))?;
+    let mut config_path = self.artifact_path.clone();
+    config_path.push("config.json");
+
+    self.save(&config_path)?;
 
     B::seed(&device, self.seed);
 
@@ -115,7 +136,7 @@ impl TrainingConfig {
     // Fit model and validate
     learner.fit(dataloader_train, dataloader_test)
       .model
-      .save_file(format!("{}/model", self.artifact_path), &DefaultRecorder::new())
+      .save_file(&self.artifact_path, &DefaultRecorder::new())
       .expect("could not fit model");
   }
 }
