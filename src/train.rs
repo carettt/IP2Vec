@@ -12,7 +12,9 @@ use burn::{
 };
 use anyhow::Result;
 
-pub trait ApplyOption: Clone + Sized {
+/// Trait for applying an `Option` to a `struct` with builder-like config functions
+pub trait ApplyOption: Sized {
+  /// Apply `val` to `f` if `Some`, otherwise return self unchanged
   fn apply_opt<T>(self, f: impl FnOnce(Self, T) -> Self, val: Option<T>) -> Self {
     match val {
       Some(val) => f(self, val),
@@ -53,7 +55,7 @@ impl TrainingConfig {
   /// Clear previous training data from `artifact_path` and seed RNG
   pub fn init<B: Backend>(&self, device: &B::Device) -> Result<()> {
     match std::fs::remove_dir_all(&self.artifact_path) {
-      Ok(_) => {}
+      Ok(_) => {},
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
       Err(e) => return Err(e.into()),
     };

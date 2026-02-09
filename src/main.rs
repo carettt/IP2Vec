@@ -18,10 +18,6 @@ fn main() -> Result<()> {
     args.output.unwrap_or_else(|| PathBuf::from("./model")),
     Ip2VecConfig::new(),
     SgdConfig::new()
-    //  .with_batch_size(64)
-    //  .with_epochs(20)
-    //  .with_learning_rate(1.0e-3)
-    //  .with_threads(128);
   );
 
   let trainer = trainer

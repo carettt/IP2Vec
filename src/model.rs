@@ -11,7 +11,7 @@ use burn::{
   prelude::*,
   backend::libtorch::LibTorchDevice,
   nn::loss::CosineEmbeddingLossConfig,
-  tensor::{backend::AutodiffBackend, Transaction, linalg::l2_norm},
+  tensor::{backend::AutodiffBackend, Transaction},
   train::{TrainOutput, TrainStep, ValidStep}
 };
 
