@@ -29,7 +29,7 @@ pub trait ApplyOption: Sized {
 pub struct TrainingConfig {
   artifact_path: PathBuf,
 
-  model: Ip2VecConfig,
+  pub model: Ip2VecConfig,
   optimizer: SgdConfig,
 
   #[config(default = 1)]
@@ -45,8 +45,8 @@ pub struct TrainingConfig {
   #[config(default = 1.0e-4)]
   learning_rate: f64,
   
-  #[config(default = 15)]
-  context_window: usize,
+  //#[config(default = 15)]
+  //context_window: usize,
 }
 
 impl ApplyOption for TrainingConfig {}

@@ -40,7 +40,19 @@ pub struct IpContext {
 }
 
 impl IpContext {
-  fn encode(&self) -> Vec<f32> {
+  /// Helper to create new IpContext from data
+  pub fn new(src_ip: Ipv4Addr, dst_ip: Ipv4Addr, dst_port: u16, protocol: u8) -> Self {
+    Self {
+      context_indices: Arc::default(),
+      src_ip,
+      dst_ip,
+      dst_port,
+      protocol
+    }
+  }
+
+  /// Encode [IpContext] to `Vec<f32>` of size 34 for tensorization
+  pub fn encode(&self) -> Vec<f32> {
     let mut data: Vec<f32> = Vec::with_capacity(34);
 
     let src_ip = self.src_ip.to_bits();
