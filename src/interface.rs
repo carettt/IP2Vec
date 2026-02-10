@@ -1,19 +1,32 @@
 //! Module containing functionality for CLI and configuration saving/loading
 
-use std::path::PathBuf;
+use std::{net::Ipv4Addr, path::PathBuf};
 
 use clap::{Parser, Args};
 
-/// IP2Vec - IP embedding neural network trainer
+/// ip2vec - IP embedding neural network
 #[derive(Parser, Debug)]
 #[command(version, about)]
-pub struct Arguments {
+pub struct InferenceArgs {
+  /// CSV dataset filepath
+  #[arg(short, long)]
+  pub config: PathBuf,
+
+  /// Input data features
+  #[command(flatten)]
+  pub features: DataFeatures
+}
+
+/// ip2vec-trainer - IP embedding neural network trainer
+#[derive(Parser, Debug)]
+#[command(version, about)]
+pub struct TrainerArgs {
   /// CSV dataset filepath
   pub dataset: PathBuf,
 
   /// Required feature column names
   #[command(flatten)]
-  pub features: Features,
+  pub features: ColumnFeatures,
   /// Optional parameters for trainer
   #[command(flatten)]
   pub params: TrainingParams,
@@ -29,9 +42,21 @@ pub struct Arguments {
   pub output: Option<PathBuf>
 }
 
+#[derive(Args, Debug)]
+pub struct DataFeatures {
+  #[arg(long)]
+  pub src_ip: Ipv4Addr,
+  #[arg(long)]
+  pub dst_ip: Ipv4Addr,
+  #[arg(long)]
+  pub dst_port: u16,
+  #[arg(long)]
+  pub protocol: u8
+}
+
 /// Struct to contain dataset feature column names
 #[derive(Args, Debug)]
-pub struct Features {
+pub struct ColumnFeatures {
   /// Column name for source IP
   #[arg(long)]
   pub src_ip: String,
