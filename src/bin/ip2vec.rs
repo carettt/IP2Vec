@@ -1,7 +1,7 @@
-use anyhow::{Context, Result};
-use burn::{backend::libtorch::LibTorchDevice, config::Config, data::dataloader::batcher::Batcher, module::Module, record::{CompactRecorder, DefaultRecorder, FullPrecisionSettings, NamedMpkFileRecorder, Record, Recorder}, Tensor};
+use anyhow::Result;
+use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset, IpContext}, interface::{InferenceArgs, TrainerArgs}, model::Ip2Vec, train::TrainingConfig, Tch};
+use ip2vec::{dataset::IpContext, interface::InferenceArgs, train::TrainingConfig, Tch};
 
 fn main() -> Result<()> {
   let args = InferenceArgs::parse();
