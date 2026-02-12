@@ -8,7 +8,7 @@ use clap::{Parser, Args};
 #[derive(Parser, Debug)]
 #[command(version, about)]
 pub struct InferenceArgs {
-  /// CSV dataset filepath
+  /// Path to configuration folder containing model.mpk and config.json
   #[arg(short, long)]
   pub config: PathBuf,
 
@@ -42,14 +42,19 @@ pub struct TrainerArgs {
   pub output: Option<PathBuf>
 }
 
+/// Struct to contain input flow features for inference embedding
 #[derive(Args, Debug)]
 pub struct DataFeatures {
+  /// Source IP
   #[arg(long)]
   pub src_ip: Ipv4Addr,
+  /// Destination IP
   #[arg(long)]
   pub dst_ip: Ipv4Addr,
+  /// Destination Port
   #[arg(long)]
   pub dst_port: u16,
+  /// Protocol
   #[arg(long)]
   pub protocol: u8
 }
