@@ -108,6 +108,7 @@ impl<B: Backend> Ip2Vec<B> {
 
     let loss = CosineEmbeddingLossConfig::new()
       .with_margin(0.5)
+      .with_reduction(nn::loss::Reduction::Mean)
       .init()
       .forward(expanded_embeddings, context, mask);
 
