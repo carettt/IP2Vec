@@ -6,11 +6,11 @@ use burn::{backend::{libtorch::LibTorchDevice, Autodiff}, optim::SgdConfig};
 use clap::Parser;
 
 use ip2vec::{
-  dataset::Ip2VecDataset, interface::{Arguments}, model::Ip2VecConfig, train::{TrainingConfig, ApplyOption}, Tch
+  dataset::Ip2VecDataset, interface::{TrainerArgs}, model::Ip2VecConfig, train::{TrainingConfig, ApplyOption}, Tch
 };
 
 fn main() -> Result<()> {
-  let args = Arguments::parse();
+  let args = TrainerArgs::parse();
 
   let device = LibTorchDevice::Cuda(0);
 
