@@ -9,7 +9,7 @@ use std::{
 use csv::DeserializeError;
 use derivative::*;
 use indexmap::IndexSet;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, anyhow, Context, Result};
 use serde::{de::{self, value::{MapDeserializer}, DeserializeSeed, MapAccess, Visitor}, Deserializer};
 use burn::{
   data::dataset::Dataset
@@ -21,68 +21,12 @@ use crate::interface::ColumnFeatures;
 
 pub mod batch;
 
-struct ContextSeed<'a> {
-  field_map: &'a HashMap<String, FieldKind>
-}
-
+#[derive(Copy, Clone)]
 enum FieldKind {
   SrcIp,
   DstIp,
   DstPort,
   Protocol
-}
-
-impl<'a, 'de> DeserializeSeed<'de> for &'a ContextSeed<'a> {
-  type Value = IpContext;
-
-  fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-  where 
-    D: Deserializer<'de>
-  {
-    deserializer.deserialize_map(ContextVisitor { field_map: self.field_map })
-  }
-}
-
-struct ContextVisitor<'a> {
-  field_map: &'a HashMap<String, FieldKind>
-}
-
-impl<'a, 'de> Visitor<'de> for ContextVisitor<'a> {
-  type Value = IpContext;
-
-  fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-    formatter.write_str("a map containing source IP, destination IP, destination port, and protocol fields")
-  }
-
-  fn visit_map<M>(self, mut map: M) -> Result<IpContext, M::Error>
-  where 
-    M: MapAccess<'de>
-  {
-    let mut src_ip = None;
-    let mut dst_ip = None;
-    let mut dst_port = None;
-    let mut protocol = None;
-
-    while let Some(key) = map.next_key::<String>()? {
-      if let Some(kind) = self.field_map.get(&key) {
-        match kind {
-          FieldKind::SrcIp => src_ip = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
-          FieldKind::DstIp => dst_ip = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
-          FieldKind::DstPort => dst_port = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
-          FieldKind::Protocol => protocol = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
-        }
-      } else {
-        let _ = de::IgnoredAny = map.next_value()?;
-      }
-    }
-
-    let src_ip = src_ip.ok_or_else(|| de::Error::missing_field("src_ip"))?;
-    let dst_ip = dst_ip.ok_or_else(|| de::Error::missing_field("dst_ip"))?;
-    let dst_port = dst_port.ok_or_else(|| de::Error::missing_field("dst_port"))?;
-    let protocol = protocol.ok_or_else(|| de::Error::missing_field("protocol"))?;
-
-    Ok(IpContext::new(src_ip, dst_ip, dst_port, protocol))
-  }
 }
 
 /// Abstract Struct containing contextual information about an IP from a flow
@@ -215,30 +159,49 @@ impl Ip2VecDataset {
   pub fn import_dataset(path: &PathBuf, features: ColumnFeatures) -> Result<Self> {
     let mut reader = csv::Reader::from_path(path)?;
 
-    let headers = reader.headers()?.clone();
     let mut field_map: HashMap<String, FieldKind> = HashMap::new();
-
     field_map.insert(features.src_ip, FieldKind::SrcIp);
     field_map.insert(features.dst_ip, FieldKind::DstIp);
     field_map.insert(features.dst_port, FieldKind::DstPort);
     field_map.insert(features.protocol, FieldKind::Protocol);
 
-    let seed = ContextSeed { field_map: &field_map };
+    let mut header_map: Vec<(usize, FieldKind)> = Vec::with_capacity(field_map.len());
 
-    let samples = reader.records()
-      .map(|result| {
-        let record = result?;
+    for (i, h) in reader.headers()?.into_iter().enumerate() {
+      if let Some(kind) = field_map.get(h) {
+        header_map.push((i, *kind));
+      }
+    }
 
-        let map: HashMap<String, String> = record.iter()
-          .zip(headers.iter())
-          .map(|(v, k)| (k.to_string(), v.to_string()))
-          .collect();
+    let samples = reader
+      .records()
+      .map(|res| {
+        let record = res?;
 
-        let deserializer: MapDeserializer<_, DeserializeError> = MapDeserializer::new(map.into_iter());
-        
-        seed.deserialize(deserializer).context("failed to deserialize record")
-      }).collect::<Result<Vec<_>>>()?;
+        let mut src_ip = None;
+        let mut dst_ip = None;
+        let mut dst_port = None;
+        let mut protocol = None;
 
+        for &(i, field) in &header_map {
+          let val = &record[i];
+
+          match field {
+            FieldKind::SrcIp => src_ip = Some(val.parse()?),
+            FieldKind::DstIp => dst_ip = Some(val.parse()?),
+            FieldKind::DstPort => dst_port = Some(val.parse()?),
+            FieldKind::Protocol => protocol = Some(val.parse()?),
+          }
+        }
+
+        let src_ip = src_ip.ok_or_else(|| anyhow!("record missing src_ip field"))?;
+        let dst_ip = dst_ip.ok_or_else(|| anyhow!("record missing dst_ip field"))?;
+        let dst_port = dst_port.ok_or_else(|| anyhow!("record missing dst_port field"))?;
+        let protocol = protocol.ok_or_else(|| anyhow!("record missing protocol field"))?;
+
+        Ok(IpContext::new(src_ip, dst_ip, dst_port, protocol))
+      })
+      .collect::<Result<Vec<_>>>()?;
 
     Self::new(samples)
   }
