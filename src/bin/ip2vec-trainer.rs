@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     .apply_opt(TrainingConfig::with_learning_rate, args.params.learning_rate)
     .apply_opt(TrainingConfig::with_context_window, args.params.context_window);
 
-  let dataset = Ip2VecDataset::import_dataset(&args.dataset)
+  let dataset = Ip2VecDataset::import_dataset(&args.dataset, args.features)
     .context("failed to import dataset")?;
 
   trainer.init::<Tch>(&device)
