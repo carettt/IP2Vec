@@ -1,16 +1,13 @@
 //! Module containing [Dataset] struct and associated functions for manipulating
 //! and using the dataset. Currently, only CSV is supported.
 
-use core::fmt;
 use std::{
   collections::{HashMap, HashSet}, net::Ipv4Addr, path::PathBuf, sync::Arc
 };
 
-use csv::DeserializeError;
 use derivative::*;
 use indexmap::IndexSet;
 use anyhow::{bail, anyhow, Context, Result};
-use serde::{de::{self, value::{MapDeserializer}, DeserializeSeed, MapAccess, Visitor}, Deserializer};
 use burn::{
   data::dataset::Dataset
 };
