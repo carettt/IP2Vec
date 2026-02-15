@@ -1,41 +1,104 @@
 //! Module containing [Dataset] struct and associated functions for manipulating
 //! and using the dataset. Currently, only CSV is supported.
 
+use core::fmt;
 use std::{
   collections::{HashMap, HashSet}, net::Ipv4Addr, path::PathBuf, sync::Arc
 };
 
+use csv::DeserializeError;
 use derivative::*;
 use indexmap::IndexSet;
-use anyhow::{Result, Context, bail};
-use serde::Deserialize;
+use anyhow::{bail, Context, Result};
+use serde::{de::{self, value::{MapDeserializer}, DeserializeSeed, MapAccess, Visitor}, Deserializer};
 use burn::{
   data::dataset::Dataset
 };
 
 #[cfg(test)] use proptest_derive::Arbitrary;
 
+use crate::interface::ColumnFeatures;
+
 pub mod batch;
 
+struct ContextSeed<'a> {
+  field_map: &'a HashMap<String, FieldKind>
+}
+
+enum FieldKind {
+  SrcIp,
+  DstIp,
+  DstPort,
+  Protocol
+}
+
+impl<'a, 'de> DeserializeSeed<'de> for &'a ContextSeed<'a> {
+  type Value = IpContext;
+
+  fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+  where 
+    D: Deserializer<'de>
+  {
+    deserializer.deserialize_map(ContextVisitor { field_map: self.field_map })
+  }
+}
+
+struct ContextVisitor<'a> {
+  field_map: &'a HashMap<String, FieldKind>
+}
+
+impl<'a, 'de> Visitor<'de> for ContextVisitor<'a> {
+  type Value = IpContext;
+
+  fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    formatter.write_str("a map containing source IP, destination IP, destination port, and protocol fields")
+  }
+
+  fn visit_map<M>(self, mut map: M) -> Result<IpContext, M::Error>
+  where 
+    M: MapAccess<'de>
+  {
+    let mut src_ip = None;
+    let mut dst_ip = None;
+    let mut dst_port = None;
+    let mut protocol = None;
+
+    while let Some(key) = map.next_key::<String>()? {
+      if let Some(kind) = self.field_map.get(&key) {
+        match kind {
+          FieldKind::SrcIp => src_ip = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
+          FieldKind::DstIp => dst_ip = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
+          FieldKind::DstPort => dst_port = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
+          FieldKind::Protocol => protocol = Some(map.next_value::<String>()?.parse().map_err(de::Error::custom)?),
+        }
+      } else {
+        let _ = de::IgnoredAny = map.next_value()?;
+      }
+    }
+
+    let src_ip = src_ip.ok_or_else(|| de::Error::missing_field("src_ip"))?;
+    let dst_ip = dst_ip.ok_or_else(|| de::Error::missing_field("dst_ip"))?;
+    let dst_port = dst_port.ok_or_else(|| de::Error::missing_field("dst_port"))?;
+    let protocol = protocol.ok_or_else(|| de::Error::missing_field("protocol"))?;
+
+    Ok(IpContext::new(src_ip, dst_ip, dst_port, protocol))
+  }
+}
+
 /// Abstract Struct containing contextual information about an IP from a flow
-#[derive(Derivative, Clone, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Derivative, Clone, PartialEq, Eq, Hash)]
 #[derivative(Debug)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct IpContext {
-  #[serde(skip, default)]
   #[cfg_attr(test, proptest(value = "Arc::default()"))]
   #[derivative(Debug="ignore")]
   context_indices: Arc<Vec<usize>>,
 
-  #[serde(rename = "IPV4_SRC_ADDR")]
   src_ip: Ipv4Addr,
 
-  #[serde(rename = "IPV4_DST_ADDR")]
   dst_ip: Ipv4Addr,
-  #[serde(rename = "L4_DST_PORT")]
   dst_port: u16,
 
-  #[serde(rename = "PROTOCOL")]
   protocol: u8
 }
 
@@ -149,13 +212,33 @@ impl Ip2VecDataset {
   }
 
   /// Function for importing CSV data set from `path`
-  pub fn import_dataset(path: &PathBuf) -> Result<Self> {
+  pub fn import_dataset(path: &PathBuf, features: ColumnFeatures) -> Result<Self> {
     let mut reader = csv::Reader::from_path(path)?;
-    let samples = reader.deserialize::<IpContext>().enumerate()
-      .map(|(i, result)|
-        result.map(|sample| sample)
-        .context(format!("could not deserialize sample {i}")))
-      .collect::<Result<Vec<_>>>()?;
+
+    let headers = reader.headers()?.clone();
+    let mut field_map: HashMap<String, FieldKind> = HashMap::new();
+
+    field_map.insert(features.src_ip, FieldKind::SrcIp);
+    field_map.insert(features.dst_ip, FieldKind::DstIp);
+    field_map.insert(features.dst_port, FieldKind::DstPort);
+    field_map.insert(features.protocol, FieldKind::Protocol);
+
+    let seed = ContextSeed { field_map: &field_map };
+
+    let samples = reader.records()
+      .map(|result| {
+        let record = result?;
+
+        let map: HashMap<String, String> = record.iter()
+          .zip(headers.iter())
+          .map(|(v, k)| (k.to_string(), v.to_string()))
+          .collect();
+
+        let deserializer: MapDeserializer<_, DeserializeError> = MapDeserializer::new(map.into_iter());
+        
+        seed.deserialize(deserializer).context("failed to deserialize record")
+      }).collect::<Result<Vec<_>>>()?;
+
 
     Self::new(samples)
   }
