@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::{Tch, dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, model::Ip2VecConfig};
+use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::Ip2VecConfig, Tch};
 
 
 use burn::{
@@ -28,6 +28,8 @@ pub trait ApplyOption: Sized {
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
   artifact_path: PathBuf,
+  pub dataset_path: PathBuf,
+  pub dataset_features: ColumnFeatures,
 
   pub model: Ip2VecConfig,
   optimizer: SgdConfig,
