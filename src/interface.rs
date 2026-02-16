@@ -3,6 +3,7 @@
 use std::{net::Ipv4Addr, path::PathBuf};
 
 use clap::{Parser, Args};
+use serde::{Deserialize, Serialize};
 
 /// ip2vec - IP embedding neural network
 #[derive(Parser, Debug)]
@@ -22,24 +23,19 @@ pub struct InferenceArgs {
 #[command(version, about)]
 pub struct TrainerArgs {
   /// CSV dataset filepath
-  pub dataset: PathBuf,
+  #[arg(required_unless_present = "store")]
+  pub dataset: Option<PathBuf>,
 
   /// Required feature column names
   #[command(flatten)]
-  pub features: ColumnFeatures,
+  pub features: Option<ColumnFeatures>,
   /// Optional parameters for trainer
   #[command(flatten)]
   pub params: TrainingParams,
 
-  /// Config file path
-  #[arg(long)]
-  pub config: Option<PathBuf>,
-  /// Whether to save configuration to path
-  #[arg(long)]
-  pub save: Option<PathBuf>,
   /// Folder path to save configuration and experiment logs
-  #[arg(short, long)]
-  pub output: Option<PathBuf>
+  #[arg(long)]
+  pub store: Option<PathBuf>
 }
 
 /// Struct to contain input flow features for inference embedding
@@ -60,19 +56,20 @@ pub struct DataFeatures {
 }
 
 /// Struct to contain dataset feature column names
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone, Serialize, Deserialize)]
+#[group(requires="src_ip", requires="dst_ip", requires="dst_port", requires="protocol")]
 pub struct ColumnFeatures {
   /// Column name for source IP
-  #[arg(long)]
+  #[arg(long, required=false)]
   pub src_ip: String,
   /// Column name for destination IP
-  #[arg(long)]
+  #[arg(long, required=false)]
   pub dst_ip: String,
   /// Column name for destination port
-  #[arg(long)]
+  #[arg(long, required=false)]
   pub dst_port: String,
   /// Column name for protocol
-  #[arg(long)]
+  #[arg(long, required=false)]
   pub protocol: String,
 }
 
