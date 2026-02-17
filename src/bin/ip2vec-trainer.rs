@@ -70,7 +70,8 @@ fn main() -> Result<()> {
     .apply_opt(TrainingConfig::with_context_window, args.params.context_window);
 
   // Import dataset with dynamic feature names
-  let dataset = Ip2VecDataset::import_dataset(&dataset, features)
+  let mut reader = csv::Reader::from_path(&dataset)?;
+  let dataset = Ip2VecDataset::import_dataset(&mut reader, features)
     .context("failed to import dataset")?;
 
   // Initialize trainer

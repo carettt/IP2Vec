@@ -59,6 +59,7 @@ pub struct Ip2Vec<B: Backend> {
 }
 
 impl<B: Backend> Ip2Vec<B> {
+  /// Embed tensor of shape [batch_size, 34] to tensor of shape [batch_size, 150]
   pub fn embed(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
     let src_ip_proj = self.activation.forward(
       self.src_ip_input.forward(input.clone().narrow(1, 0, 32)));
