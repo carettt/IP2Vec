@@ -153,23 +153,29 @@ impl Ip2VecDataset {
   }
 
   /// Function for importing CSV data set from `path`
-  pub fn import_dataset(path: &PathBuf, features: ColumnFeatures) -> Result<Self> {
-    let mut reader = csv::Reader::from_path(path)?;
+  pub fn import_dataset<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
+  -> Result<Self>
+  where 
+    R: std::io::Read
+  {
+    //let mut reader = csv::Reader::from_path(path)?;
 
+    // Construct map of column name to [FieldKind] enum
     let mut field_map: HashMap<String, FieldKind> = HashMap::new();
     field_map.insert(features.src_ip, FieldKind::SrcIp);
     field_map.insert(features.dst_ip, FieldKind::DstIp);
     field_map.insert(features.dst_port, FieldKind::DstPort);
     field_map.insert(features.protocol, FieldKind::Protocol);
 
+    // Map row index to FieldKind
     let mut header_map: Vec<(usize, FieldKind)> = Vec::with_capacity(field_map.len());
-
     for (i, h) in reader.headers()?.into_iter().enumerate() {
       if let Some(kind) = field_map.get(h) {
         header_map.push((i, *kind));
       }
     }
 
+    // Deserialize for each record
     let samples = reader
       .records()
       .map(|res| {
@@ -180,6 +186,7 @@ impl Ip2VecDataset {
         let mut dst_port = None;
         let mut protocol = None;
 
+        // Hot-loop through each index and assign parsed value
         for &(i, field) in &header_map {
           let val = &record[i];
 
@@ -191,15 +198,18 @@ impl Ip2VecDataset {
           }
         }
 
+        // Convert `Option` to inner value or throw error for missing feature in record
         let src_ip = src_ip.ok_or_else(|| anyhow!("record missing src_ip field"))?;
         let dst_ip = dst_ip.ok_or_else(|| anyhow!("record missing dst_ip field"))?;
         let dst_port = dst_port.ok_or_else(|| anyhow!("record missing dst_port field"))?;
         let protocol = protocol.ok_or_else(|| anyhow!("record missing protocol field"))?;
 
+        // Construct and return deserialized [IpContext]
         Ok(IpContext::new(src_ip, dst_ip, dst_port, protocol))
       })
       .collect::<Result<Vec<_>>>()?;
 
+    // Construct new dataset with deserialized samples
     Self::new(samples)
   }
 
@@ -293,10 +303,16 @@ mod tests {
     #[test]
     fn ipcontext_deserialization(data in csv_data_strategy()) {
       let mut reader = Reader::from_reader(data.as_bytes());
+      let features = ColumnFeatures {
+        src_ip: String::from("IPV4_SRC_ADDR"),
+        dst_ip: String::from("IPV4_DST_ADDR"),
+        dst_port: String::from("L4_DST_PORT"),
+        protocol: String::from("PROTOCOL")
+      };
 
-      for row in reader.deserialize::<IpContext>() {
-        prop_assert!(row.is_ok());
-      }
+      let res = Ip2VecDataset::import_dataset(&mut reader, features);
+
+      prop_assert!(res.is_ok());
     }
 
     #[test]
@@ -311,26 +327,13 @@ mod tests {
       }
     }
 
-    //#[test]
-    //fn target_encoding(dataset in any::<Ip2VecDataset>()) {
-    //  for i in 0..dataset.samples.len() {
-    //    let item = dataset.get(i).unwrap();
+    #[test]
+    fn encoding(dataset in any::<Ip2VecDataset>()) {
+      for i in 0..dataset.samples.len() {
+        let item = dataset.get(i).unwrap();
 
-    //    prop_assert_eq!(item.target.shape().dims, vec![34]);
-    //  }
-    //}
-
-    //#[test]
-    //fn context_encoding(dataset in any::<Ip2VecDataset>()) {
-    //  for i in 0..dataset.samples.len() {
-    //    let sample = dataset.samples.get_index(i).unwrap();
-    //    let item = dataset.get(i).unwrap();
-
-    //    prop_assert_eq!(
-    //      item.context.shape().dims,
-    //      vec![sample.context_indices.len(), 34]
-    //    );
-    //  }
-    //}
+        prop_assert_eq!(item.target.encode().len(), 34);
+      }
+    }
   }
 }

@@ -28,9 +28,13 @@ pub trait ApplyOption: Sized {
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
   artifact_path: PathBuf,
+  
+  /// Path to training dataset CSV file
   pub dataset_path: PathBuf,
+  /// Names of feature columns in dataset CSV file
   pub dataset_features: ColumnFeatures,
 
+  /// Embedding model configuration
   pub model: Ip2VecConfig,
   optimizer: SgdConfig,
 

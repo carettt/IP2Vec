@@ -1,0 +1,10 @@
+2026-02-17T15:00:35.714701Z  INFO burn_train::learner::train_val: Fitting the model:
+ Ip2Vec {
+  activation: Relu
+  src_ip_input: Linear {d_input: 32, d_output: 100, bias: true, params: 3300}
+  dst_port_input: Linear {d_input: 1, d_output: 25, bias: true, params: 50}
+  protocol_input: Linear {d_input: 1, d_output: 25, bias: true, params: 50}
+  hidden: Linear {d_input: 150, d_output: 150, bias: true, params: 22650}
+  params: 26050
+}
+2026-02-17T15:00:35.838981Z  INFO burn_train::learner::strategies::single::epoch: Executing training step for epoch 1
