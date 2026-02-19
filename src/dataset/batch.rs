@@ -79,17 +79,11 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       // Update batch
       sample_buffer.extend(sample);
 
-      if positive_targets.len() < positive_count {
-        panic!("not enough context for context_window, check dataset");
-      } else if negative_targets.len() < negative_count {
-        panic!("batch too small to gather enough negative samples, lower neg_multiplier or increase batch_size");
-      } else {
-        context_buffer.extend(positive_targets);
-        context_buffer.extend(negative_targets);
-      }
+      mask_buffer.extend(vec![1; positive_targets.len() / dim]);
+      mask_buffer.extend(vec![-1; negative_targets.len() / dim]);
 
-      mask_buffer.extend(vec![1; positive_count]);
-      mask_buffer.extend(vec![-1; negative_count]);
+      context_buffer.extend(positive_targets);
+      context_buffer.extend(negative_targets);
 
       //if context_num < self.context_window {
       //  let remainder = self.context_window - context_num;
@@ -108,7 +102,7 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
     let encoded_dim = sample_buffer.len() / batch_size;
 
     let sample_dims = [batch_size, encoded_dim];
-    let context_dims = [batch_size, context_buffer.len() / encoded_dim, encoded_dim];
+    let context_dims = [batch_size, context_buffer.len() / (batch_size * encoded_dim), encoded_dim];
 
     let samples =
       Tensor::<B, 1>::from_floats(sample_buffer.as_slice(), device)
