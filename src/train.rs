@@ -1,16 +1,15 @@
 //! Module containing training functionality such as metrics
 
-use std::path::PathBuf;
+use std::{fs::DirEntry, path::PathBuf};
 
-use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::Ip2VecConfig, Tch};
-
+use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::{Ip2Vec, Ip2VecConfig}, Tch};
 
 use burn::{
-  backend::libtorch::LibTorchDevice, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
+  backend::{libtorch::LibTorchDevice, LibTorch}, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::{DefaultRecorder, Recorder}, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
     Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
   }, LearnerBuilder, LearningStrategy}
 };
-use anyhow::Result;
+use anyhow::{Result, Context};
 
 /// Trait for applying an `Option` to a `struct` with builder-like config functions
 pub trait ApplyOption: Sized {
@@ -51,8 +50,10 @@ pub struct TrainingConfig {
   #[config(default = 1.0e-4)]
   learning_rate: f64,
   
-  #[config(default = 15)]
+  #[config(default = 5)]
   context_window: usize,
+  #[config(default = 5)]
+  neg_multiplier: usize
 }
 
 impl ApplyOption for TrainingConfig {}
@@ -104,7 +105,10 @@ impl TrainingConfig {
     // Initialize dataset & dataloaders w/ batcher
     let (train, test) = self.split_dataset::<B, _>(dataset);
 
-    let batcher = ContextBatcher::default();
+    let batcher = ContextBatcher::new(
+      self.context_window,
+      self.neg_multiplier
+    );
     let cpu_device = LibTorchDevice::Cpu;
 
     let dataloader_train =
@@ -141,7 +145,7 @@ impl TrainingConfig {
         self.learning_rate
       );
 
-    // Fit model and validate
+    // Fit model and save
     learner.fit(dataloader_train, dataloader_test)
       .model
       .save_file(&self.artifact_path, &DefaultRecorder::new())

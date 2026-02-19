@@ -13,7 +13,7 @@ serde = { version = "~1.0", features = ["derive"] }
 csv = "~1.4"
 
 burn = { version = "~0.19", features = [
-  "train", "metrics",
+  "tui", "train", "metrics",
   "tch", "fusion", "autodiff"
 ], default-features = false }
 derivative = "~2.2"

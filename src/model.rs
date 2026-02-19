@@ -77,26 +77,26 @@ impl<B: Backend> Ip2Vec<B> {
   pub fn forward(
     &self,
     targets: Tensor<B, 2>,
-    context: Vec<Tensor<B, 2>>,
+    context: Tensor<B, 3>,
     mask: Tensor<B, 1, Int>
   ) -> EmbeddingOutput<B> {
     let embeddings = self.embed(targets.clone()); // [batch_size, 150]
 
     // Repeat each row contiguously for every context
-    //let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
-    //  .unsqueeze_dim::<3>(1).repeat(&[1, context_window, 1]).flatten(0, 1);
-    let mut duplicated_embeddings: Vec<Tensor<B, 2>> = Vec::with_capacity(context.len());
+    let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
+      .unsqueeze_dim::<3>(1).repeat(&[1, context.dims()[1], 1]).flatten(0, 1);
+    //let mut duplicated_embeddings: Vec<Tensor<B, 2>> = Vec::with_capacity(context.len());
 
     //eprintln!("context_len: {}, embedding_len: {}", context.len(), embeddings.dims()[0]);
 
-    for (i, context) in context.iter().enumerate() {
-      duplicated_embeddings.push(embeddings.clone().slice(s![i, ..])
-        .repeat_dim(0, context.dims()[0]));
-    }
+    //for (i, context) in context.iter().enumerate() {
+    //  duplicated_embeddings.push(embeddings.clone().slice(s![i, ..])
+    //    .repeat_dim(0, context.dims()[0]));
+    //}
 
     //let context: Tensor<B, 2> = self.embed(context);
-    let expanded_embeddings: Tensor<B, 2> = Tensor::cat(duplicated_embeddings, 0);
-    let context: Tensor<B, 2> = self.embed(Tensor::cat(context, 0));
+    //let expanded_embeddings: Tensor<B, 2> = Tensor::cat(duplicated_embeddings, 0);
+    let context: Tensor<B, 2> = self.embed(context.flatten(0, 1));
 
     // L2 Normalize embedding outputs
     //let expanded_embeddings = l2_norm(expanded_embeddings, 1);
@@ -124,26 +124,17 @@ where
   fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
     let gpu_device = LibTorchDevice::Cuda(0);
 
-    let [sample_data, context_mask_data] = Transaction::default()
+    let [sample_data, context_data, context_mask_data] = Transaction::default()
       .register(batch.samples)
+      .register(batch.contexts)
       .register(batch.context_mask)
       .execute()
       .try_into()
       .expect("failed to sync batch to GPU");
 
     let samples = Tensor::from_data(sample_data, &gpu_device);
+    let contexts = Tensor::from_data(context_data, &gpu_device);
     let context_mask = Tensor::from_data(context_mask_data, &gpu_device);
-
-    let mut context_transaction = Transaction::default();
-    for context in batch.contexts {
-      context_transaction = context_transaction.register(context);
-    }
-    let context_data = context_transaction.execute();
-
-    let mut contexts = Vec::with_capacity(context_data.len());
-    for data in context_data {
-      contexts.push(Tensor::from_data(data, &gpu_device));
-    }
 
     let output = self.forward(samples, contexts, context_mask);
 
@@ -158,26 +149,17 @@ where
   fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
     let gpu_device = LibTorchDevice::Cuda(0);
 
-    let [sample_data, context_mask_data] = Transaction::default()
+    let [sample_data, context_data, context_mask_data] = Transaction::default()
       .register(batch.samples)
+      .register(batch.contexts)
       .register(batch.context_mask)
       .execute()
       .try_into()
       .expect("failed to sync batch to GPU");
 
     let samples: Tensor<B, 2> = Tensor::from_data(sample_data, &gpu_device);
+    let contexts: Tensor<B, 3> = Tensor::from_data(context_data, &gpu_device);
     let context_mask: Tensor<B, 1, Int> = Tensor::from_data(context_mask_data, &gpu_device);
-
-    let mut context_transaction = Transaction::default();
-    for context in batch.contexts {
-      context_transaction = context_transaction.register(context);
-    }
-    let context_data = context_transaction.execute();
-
-    let mut contexts: Vec<Tensor<B, 2>> = Vec::with_capacity(context_data.len());
-    for data in context_data {
-      contexts.push(Tensor::from_data(data, &gpu_device));
-    }
 
     self.forward(samples, contexts, context_mask)
   }
