@@ -2,7 +2,7 @@
 //! and using the dataset. Currently, only CSV is supported.
 
 use std::{
-  collections::{HashMap, HashSet}, net::Ipv4Addr, path::PathBuf, sync::Arc
+  collections::{HashMap, HashSet}, net::Ipv4Addr, sync::Arc
 };
 
 use derivative::*;

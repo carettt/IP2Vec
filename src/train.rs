@@ -1,15 +1,15 @@
 //! Module containing training functionality such as metrics
 
-use std::{fs::DirEntry, path::PathBuf};
+use std::path::PathBuf;
 
-use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::{Ip2Vec, Ip2VecConfig}, Tch};
+use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::Ip2VecConfig, Tch};
 
 use burn::{
-  backend::{libtorch::LibTorchDevice, LibTorch}, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::{DefaultRecorder, Recorder}, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
+  backend::libtorch::LibTorchDevice, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
     Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
   }, LearnerBuilder, LearningStrategy}
 };
-use anyhow::{Result, Context};
+use anyhow::Result;
 
 /// Trait for applying an `Option` to a `struct` with builder-like config functions
 pub trait ApplyOption: Sized {
