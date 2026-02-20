@@ -3,8 +3,7 @@
 //! constructed with [Ip2VecConfig] which provides default embed dimension params.
 
 use crate::{
-  train::EmbeddingOutput,
-  dataset::batch::ContextBatch
+  dataset::batch::ContextBatch, loss::NegEmbeddingLossConfig, train::EmbeddingOutput
 };
 
 use burn::{
@@ -77,41 +76,29 @@ impl<B: Backend> Ip2Vec<B> {
   pub fn forward(
     &self,
     targets: Tensor<B, 2>,
-    context: Tensor<B, 3>,
-    mask: Tensor<B, 1, Int>
+    positive_context: Tensor<B, 3>,
+    negative_context: Tensor<B, 3>
   ) -> EmbeddingOutput<B> {
+    let [batch_size, pos_context_num, feat_dim] = positive_context.dims();
+    let [_, neg_context_num, _] = negative_context.dims();
+
     let embeddings = self.embed(targets.clone()); // [batch_size, 150]
+    let embedding_dim = embeddings.dims()[1];
 
-    // Repeat each row contiguously for every context
-    let expanded_embeddings: Tensor<B, 2> = embeddings.clone()
-      .unsqueeze_dim::<3>(1).repeat(&[1, context.dims()[1], 1]).flatten(0, 1);
-    //let mut duplicated_embeddings: Vec<Tensor<B, 2>> = Vec::with_capacity(context.len());
+    let pos_context_embeddings = self.embed(positive_context
+      .reshape([batch_size * pos_context_num, feat_dim]))
+      .reshape([batch_size, pos_context_num, embedding_dim]);
+    let neg_context_embeddings = self.embed(negative_context
+      .reshape([batch_size * neg_context_num, feat_dim]))
+      .reshape([batch_size, neg_context_num, embedding_dim]);
 
-    //eprintln!("context_len: {}, embedding_len: {}", context.len(), embeddings.dims()[0]);
-
-    //for (i, context) in context.iter().enumerate() {
-    //  duplicated_embeddings.push(embeddings.clone().slice(s![i, ..])
-    //    .repeat_dim(0, context.dims()[0]));
-    //}
-
-    //let context: Tensor<B, 2> = self.embed(context);
-    //let expanded_embeddings: Tensor<B, 2> = Tensor::cat(duplicated_embeddings, 0);
-    let context: Tensor<B, 2> = self.embed(context.flatten(0, 1));
-
-    // L2 Normalize embedding outputs
-    //let expanded_embeddings = l2_norm(expanded_embeddings, 1);
-    //let context = l2_norm(context, 1);
-
-    // Flatten mask and convert to 0 to -1
-    //let mask: Tensor<B, 1, Int> = (mask.flatten(0, 1) * 2) - 1;
-
-    //eprintln!("expanded: {:?}, context: {:?}, mask: {:?}", expanded_embeddings.dims(), context.dims(), mask.dims());
-
-    let loss = CosineEmbeddingLossConfig::new()
-      .with_margin(0.5)
-      .with_reduction(nn::loss::Reduction::Mean)
+    let loss = NegEmbeddingLossConfig::new()
       .init()
-      .forward(expanded_embeddings, context, mask);
+      .forward(
+        embeddings.clone(),
+        pos_context_embeddings,
+        neg_context_embeddings
+      );
 
     EmbeddingOutput::new(embeddings, loss)
   }
@@ -124,19 +111,19 @@ where
   fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
     let gpu_device = LibTorchDevice::Cuda(0);
 
-    let [sample_data, context_data, context_mask_data] = Transaction::default()
+    let [sample_data, pos_context_data, neg_context_data] = Transaction::default()
       .register(batch.samples)
-      .register(batch.contexts)
-      .register(batch.context_mask)
+      .register(batch.positive_context)
+      .register(batch.negative_context)
       .execute()
       .try_into()
       .expect("failed to sync batch to GPU");
 
-    let samples = Tensor::from_data(sample_data, &gpu_device);
-    let contexts = Tensor::from_data(context_data, &gpu_device);
-    let context_mask = Tensor::from_data(context_mask_data, &gpu_device);
+    let samples: Tensor<B, 2> = Tensor::from_data(sample_data, &gpu_device);
+    let positive_context: Tensor<B, 3> = Tensor::from_data(pos_context_data, &gpu_device);
+    let negative_context: Tensor<B, 3> = Tensor::from_data(neg_context_data, &gpu_device);
 
-    let output = self.forward(samples, contexts, context_mask);
+    let output = self.forward(samples, positive_context, negative_context);
 
     TrainOutput::new(self, output.loss.backward(), output)
   }
@@ -149,19 +136,19 @@ where
   fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
     let gpu_device = LibTorchDevice::Cuda(0);
 
-    let [sample_data, context_data, context_mask_data] = Transaction::default()
+    let [sample_data, pos_context_data, neg_context_data] = Transaction::default()
       .register(batch.samples)
-      .register(batch.contexts)
-      .register(batch.context_mask)
+      .register(batch.positive_context)
+      .register(batch.negative_context)
       .execute()
       .try_into()
       .expect("failed to sync batch to GPU");
 
     let samples: Tensor<B, 2> = Tensor::from_data(sample_data, &gpu_device);
-    let contexts: Tensor<B, 3> = Tensor::from_data(context_data, &gpu_device);
-    let context_mask: Tensor<B, 1, Int> = Tensor::from_data(context_mask_data, &gpu_device);
+    let positive_context: Tensor<B, 3> = Tensor::from_data(pos_context_data, &gpu_device);
+    let negative_context: Tensor<B, 3> = Tensor::from_data(neg_context_data, &gpu_device);
 
-    self.forward(samples, contexts, context_mask)
+    self.forward(samples, positive_context, negative_context)
   }
 }
 

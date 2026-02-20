@@ -53,19 +53,18 @@ impl NegEmbeddingLoss {
   ) -> Tensor<B, 1> {
     let unsqueezed_target = target.unsqueeze_dim(1);
 
-    let positive_scores: Tensor<B, 1> = unsqueezed_target.clone()
-      .matmul(positive.swap_dims(1, 2))
-      .sum_dim(2)
-      .squeeze_dims(&[1, 2]);
-    let negative_scores: Tensor<B, 1> = unsqueezed_target
-      .matmul(negative.swap_dims(1, 2))
-      .sum_dim(2)
-      .squeeze_dims(&[1, 2]);
+    let positive_similarity: Tensor<B, 1> = unsqueezed_target.clone()
+      .matmul(positive.swap_dims(1, 2)) // [batch_size, 1, context_window]
+      .squeeze_dim::<2>(1) // [batch_size, context_window]
+      .sum_dim(1) // [batch_size, 1]
+      .squeeze_dim::<1>(1); // [batch_size]
+    let negative_similarity: Tensor<B, 1> = unsqueezed_target
+      .matmul(negative.swap_dims(1, 2)) // [batch_size, 1, context_window * neg_mult]
+      .squeeze_dim::<2>(1) // [batch_size, context_window * neg_mult]
+      .sum_dim(1) // [batch_size, 1]
+      .squeeze_dim::<1>(1);
 
-    let positive_loss = log_sigmoid(positive_scores);
-    let negative_loss = log_sigmoid(negative_scores);
-
-    (positive_loss + negative_loss).neg()
+    (log_sigmoid(positive_similarity) + log_sigmoid(-negative_similarity)).neg()
   }
 
   /// Calculate loss with Reduction from config (default: Mean), returns tensor of shape [1]
