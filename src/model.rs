@@ -9,7 +9,6 @@ use crate::{
 use burn::{
   prelude::*,
   backend::libtorch::LibTorchDevice,
-  nn::loss::CosineEmbeddingLossConfig,
   tensor::{backend::AutodiffBackend, Transaction},
   train::{TrainOutput, TrainStep, ValidStep}
 };
@@ -33,7 +32,7 @@ impl Ip2VecConfig {
       self.src_ip_embed_dim + self.dst_port_embed_dim + self.protocol_embed_dim;
 
     Ip2Vec {
-      activation: nn::Relu::new(),
+      activation: nn::Gelu::new(),
 
       src_ip_input: nn::LinearConfig::new(32, self.src_ip_embed_dim).init(device),
       dst_port_input: nn::LinearConfig::new(1, self.dst_port_embed_dim).init(device),
@@ -48,7 +47,7 @@ impl Ip2VecConfig {
 /// space, which are embedded into a tensor of shape [batch_size, 150].
 #[derive(Module, Debug)]
 pub struct Ip2Vec<B: Backend> {
-  activation: nn::Relu,
+  activation: nn::Gelu,
 
   src_ip_input: nn::Linear<B>,
   dst_port_input: nn::Linear<B>,
