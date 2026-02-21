@@ -5,18 +5,19 @@ edition = "2024"
 
 [dependencies]
 anyhow = "~1.0"
+derivative = "~2.2"
 clap = { version = "~4.5", features = ["derive"] }
 
-thousands = "~0.2"
 indexmap = "~2.12"
 serde = { version = "~1.0", features = ["derive"] }
 csv = "~1.4"
+
+smartcore = "0.4.9"
 
 burn = { version = "~0.19", features = [
   "tui", "train", "metrics",
   "tch", "fusion", "autodiff"
 ], default-features = false }
-derivative = "~2.2"
 
 [dev-dependencies]
 proptest = "1.8.0"

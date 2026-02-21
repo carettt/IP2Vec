@@ -13,6 +13,10 @@ pub struct InferenceArgs {
   #[arg(short, long)]
   pub config: PathBuf,
 
+  /// Whether to save PCA projection to CSV file
+  #[arg(long)]
+  pub pca: bool,
+
   /// Input subcommand
   #[command(subcommand)]
   pub command: Commands

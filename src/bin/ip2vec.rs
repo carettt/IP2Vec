@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::{Ip2VecDataset, IpContext}, interface::{Commands, InferenceArgs}, train::TrainingConfig, Tch};
+use ip2vec::{dataset::{Ip2VecDataset, IpContext}, interface::{Commands, InferenceArgs}, to_matrix, train::TrainingConfig, Tch};
+use smartcore::{decomposition::pca::{PCAParameters, PCA}, linalg::basic::arrays::{Array, Array2}};
 
 fn main() -> Result<()> {
   let args = InferenceArgs::parse();
@@ -45,7 +46,29 @@ fn main() -> Result<()> {
 
   let embedding = model.embed(input_tensor);
 
-  println!("{}", embedding) ;
+  if args.pca {
+    let mut writer = csv::Writer::from_path("./pca.csv")?;
+    let embedding_matrix = to_matrix(embedding.clone())?;
 
+    let pca =PCA::fit(
+      &embedding_matrix,
+      PCAParameters::default().with_n_components(2)
+    )?;
+
+    let projection = pca.transform(&embedding_matrix)?;
+
+    let (n_rows, n_cols) = projection.shape();
+
+    for i in 0..n_rows {
+      let mut row_vec: Vec<String> = Vec::with_capacity(n_cols);
+      for j in 0..n_cols {
+        row_vec.push(projection.get((i, j)).to_string());
+      }
+
+      writer.write_record(row_vec)?;
+    }
+  }
+
+  println!("{}", embedding) ;
   Ok(())
 }
