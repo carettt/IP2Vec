@@ -26,6 +26,7 @@ pub trait ApplyOption: Sized {
 /// configuration objects ([Ip2VecConfig], [SgdConfig])
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
+  #[config(default = "PathBuf::from(\"./model\")")]
   artifact_path: PathBuf,
   
   /// Path to training dataset CSV file

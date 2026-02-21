@@ -23,7 +23,7 @@ fn main() -> Result<()> {
   let features: ColumnFeatures;
 
   // Load store from `store_path/config.json` if store available
-  if let Some(store_path) = args.store {
+  if let Some(store_path) = &args.store {
     let mut config_path = store_path.clone();
     config_path.push("config.json");
 
@@ -51,7 +51,6 @@ fn main() -> Result<()> {
 
     // Initialize new trainer
     trainer = TrainingConfig::new(
-      PathBuf::from("./model"),
       dataset.clone(),
       features.clone(),
       Ip2VecConfig::new(),
@@ -61,6 +60,7 @@ fn main() -> Result<()> {
 
   // Apply/overwrite training parameters if provided
   let trainer = trainer
+    .apply_opt(TrainingConfig::with_artifact_path, args.store)
     .apply_opt(TrainingConfig::with_seed, args.params.seed)
     .apply_opt(TrainingConfig::with_epochs, args.params.epochs)
     .apply_opt(TrainingConfig::with_split_ratio, args.params.split_ratio)
