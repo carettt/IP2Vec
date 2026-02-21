@@ -1,7 +1,7 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::IpContext, interface::InferenceArgs, train::TrainingConfig, Tch};
+use ip2vec::{dataset::{Ip2VecDataset, IpContext}, interface::{Commands, InferenceArgs}, train::TrainingConfig, Tch};
 
 fn main() -> Result<()> {
   let args = InferenceArgs::parse();
@@ -17,16 +17,29 @@ fn main() -> Result<()> {
   let config = TrainingConfig::load(&config_path)?;
   let instance = DefaultRecorder::new().load(instance_path, device)?;
 
-  let input = IpContext::new(
-    args.features.src_ip,
-    args.features.dst_ip,
-    args.features.dst_port,
-    args.features.protocol
-  );
+  let input_tensor: Tensor<Tch, 2>;
 
-  let input_tensor: Tensor<Tch, 2> =
-    Tensor::<Tch, 1>::from_data(input.encode().as_slice(), device)
-      .reshape([1, 34]);
+  match args.command {
+    Commands::Single { features } => {
+      let input = IpContext::new(
+        features.src_ip,
+        features.dst_ip,
+        features.dst_port,
+        features.protocol
+      );
+
+      input_tensor =
+        Tensor::<Tch, 1>::from_data(input.encode().as_slice(), device)
+          .reshape([1, 34]);
+    },
+    Commands::Batch { file } => {
+      let mut reader = csv::Reader::from_path(&file)?;
+      let dataset = Ip2VecDataset::import_dataset(&mut reader, config.dataset_features)
+        .context("failed to import dataset")?;
+
+      input_tensor = dataset.batch_encode(device);
+    }
+  };
 
   let model = config.model.init::<Tch>(&device).load_record(instance);
 

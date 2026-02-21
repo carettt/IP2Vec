@@ -9,7 +9,7 @@ use derivative::*;
 use indexmap::IndexSet;
 use anyhow::{bail, anyhow, Context, Result};
 use burn::{
-  data::dataset::Dataset
+  data::dataset::Dataset, prelude::Backend, Tensor
 };
 
 #[cfg(test)] use proptest_derive::Arbitrary;
@@ -220,6 +220,19 @@ impl Ip2VecDataset {
     } else {
       bail!("could not find context for sample {idx}")
     }
+  }
+
+  /// Encode all dataset samples to a single Tensor, for inference
+  pub fn batch_encode<B: Backend>(&self, device: &B::Device) -> Tensor<B, 2> {
+    let dim = self.samples[0].encode().len();
+    let mut sample_buffer: Vec<f32> = Vec::with_capacity(self.samples.len() * dim);
+
+    for sample in &self.samples {
+      sample_buffer.extend(sample.encode());
+    }
+
+    Tensor::<B, 1>::from_data(sample_buffer.as_slice(), device)
+      .reshape([sample_buffer.len() / dim, dim])
   }
 }
 

@@ -2,7 +2,7 @@
 
 use std::{net::Ipv4Addr, path::PathBuf};
 
-use clap::{Parser, Args};
+use clap::{Parser, Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
 /// ip2vec - IP embedding neural network
@@ -13,9 +13,9 @@ pub struct InferenceArgs {
   #[arg(short, long)]
   pub config: PathBuf,
 
-  /// Input data features
-  #[command(flatten)]
-  pub features: DataFeatures
+  /// Input subcommand
+  #[command(subcommand)]
+  pub command: Commands
 }
 
 /// ip2vec-trainer - IP embedding neural network trainer
@@ -36,6 +36,23 @@ pub struct TrainerArgs {
   /// Folder path to save configuration and experiment logs
   #[arg(long)]
   pub store: Option<PathBuf>
+}
+
+/// Enum containing inference subcommands
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+  /// Single sample inference
+  Single {
+    /// Input data features
+    #[command(flatten)]
+    features: DataFeatures
+  },
+
+  /// File batch inference
+  Batch {
+    /// Path to batch
+    file: PathBuf,
+  }
 }
 
 /// Struct to contain input flow features for inference embedding
