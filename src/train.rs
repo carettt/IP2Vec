@@ -38,8 +38,9 @@ pub struct TrainingConfig {
   pub model: Ip2VecConfig,
   optimizer: SgdConfig,
 
+  /// RNG seed
   #[config(default = 1)]
-  seed: u64,
+  pub seed: u64,
   #[config(default = 10)]
   epochs: usize,
   #[config(default = 0.6)]

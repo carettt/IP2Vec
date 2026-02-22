@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::{Ip2VecDataset, IpContext}, interface::{Commands, InferenceArgs}, to_matrix, train::TrainingConfig, Tch};
-use smartcore::{decomposition::pca::{PCAParameters, PCA}, linalg::basic::arrays::{Array, Array2}};
+use ip2vec::{dataset::{Ip2VecDataset, IpContext}, interface::{Commands, InferenceArgs}, to_array2, train::TrainingConfig, Tch};
+use petal_decomposition::{PcaBuilder, RandomizedPcaBuilder};
 
 fn main() -> Result<()> {
   let args = InferenceArgs::parse();
@@ -48,25 +48,18 @@ fn main() -> Result<()> {
 
   if args.pca {
     let mut writer = csv::Writer::from_path("./pca.csv")?;
-    let embedding_matrix = to_matrix(embedding.clone())?;
 
-    let pca =PCA::fit(
-      &embedding_matrix,
-      PCAParameters::default().with_n_components(2)
-    )?;
+    let embedding_arr = to_array2(&embedding)?;
 
-    let projection = pca.transform(&embedding_matrix)?;
+    let mut pca = RandomizedPcaBuilder::new(3).seed(config.seed.into()).build();
+    let projection = pca.fit_transform(&embedding_arr)?;
 
-    let (n_rows, n_cols) = projection.shape();
-
-    for i in 0..n_rows {
-      let mut row_vec: Vec<String> = Vec::with_capacity(n_cols);
-      for j in 0..n_cols {
-        row_vec.push(projection.get((i, j)).to_string());
-      }
-
-      writer.write_record(row_vec)?;
+    for row in projection.rows() {
+      let record: Vec<String> = row.iter().map(|i| i.to_string()).collect();
+      writer.write_record(&record)?;
     }
+
+    writer.flush()?;
   }
 
   println!("{}", embedding) ;
