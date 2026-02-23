@@ -56,12 +56,14 @@ impl NegEmbeddingLoss {
     let positive_similarity: Tensor<B, 1> = unsqueezed_target.clone()
       .matmul(positive.swap_dims(1, 2)) // [batch_size, 1, context_window]
       .squeeze_dim::<2>(1) // [batch_size, context_window]
-      .sum_dim(1) // [batch_size, 1]
+      .mean_dim(1) // [batch_size, 1]
+      //.sum_dim(1) // [batch_size, 1]
       .squeeze_dim::<1>(1); // [batch_size]
     let negative_similarity: Tensor<B, 1> = unsqueezed_target
       .matmul(negative.swap_dims(1, 2)) // [batch_size, 1, context_window * neg_mult]
       .squeeze_dim::<2>(1) // [batch_size, context_window * neg_mult]
-      .sum_dim(1) // [batch_size, 1]
+      .mean_dim(1) // [batch_size, 1]
+      //.sum_dim(1) // [batch_size, 1]
       .squeeze_dim::<1>(1); // [batch_size]
 
     (log_sigmoid(positive_similarity) + log_sigmoid(-negative_similarity)).neg()
