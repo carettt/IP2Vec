@@ -30,7 +30,6 @@
 
         pkgs.rust-analyzer
 
-        pkgs.openssl
         pkgs.pkg-config
 
         nsight_systems
@@ -40,7 +39,9 @@
         libtorch
         pkgs.stdenv.cc.cc.lib
         pkgs.linuxPackages.nvidia_x11
-        pkgs.openblas.dev
+
+        pkgs.openssl
+        pkgs.mkl
       ];
 
       shellHook = ''

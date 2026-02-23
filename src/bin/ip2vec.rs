@@ -45,14 +45,28 @@ fn main() -> Result<()> {
   let model = config.model.init::<Tch>(&device).load_record(instance);
 
   let embedding = model.embed(input_tensor);
+  println!("{}", embedding);
 
   if args.pca {
+    println!("starting PCA decomposition");
+
+    let dim = 3;
+
     let mut writer = csv::Writer::from_path("./pca.csv")?;
 
-    let embedding_arr = to_array2(&embedding)?;
+    let arr = to_array2(&embedding)?.to_owned();
 
-    let mut pca = RandomizedPcaBuilder::new(3).seed(config.seed.into()).build();
-    let projection = pca.fit_transform(&embedding_arr)?;
+    let mut pca = RandomizedPcaBuilder::new(dim).seed(config.seed.into()).build();
+    let projection = pca.fit_transform(&arr)?;
+
+    println!("variance: {}",
+      pca.explained_variance_ratio().iter().enumerate()
+      .map(|(i, v)| format!("PC{}: {} ", i+1, v)).collect::<String>()
+    );
+
+    writer.write_record(
+      (1..=dim).map(|i| format!("pc{}", i)).collect::<Vec<_>>()
+    )?;
 
     for row in projection.rows() {
       let record: Vec<String> = row.iter().map(|i| i.to_string()).collect();
@@ -60,8 +74,9 @@ fn main() -> Result<()> {
     }
 
     writer.flush()?;
+
+    println!("saved components to ./pca.csv");
   }
 
-  println!("{}", embedding) ;
   Ok(())
 }

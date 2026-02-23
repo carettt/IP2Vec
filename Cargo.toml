@@ -13,7 +13,8 @@ serde = { version = "~1.0", features = ["derive"] }
 csv = "~1.4"
 
 ndarray = "~0.17"
-petal-decomposition = { version = "~0.9", features = ["openblas-static", "serialization"] }
+ndarray-linalg = { version = "~0.18", features = ["intel-mkl-static"] }
+petal-decomposition = { version = "~0.9", features = ["intel-mkl-static", "serialization"] }
 
 burn = { version = "~0.19", features = [
   "tui", "train", "metrics",
