@@ -1,7 +1,7 @@
 //! Module containing logic for implementation of NEG loss from the Word2Vec
 //! paper (Mikolov et al., 2013)
 
-use burn::{config::Config, module::{Content, DisplaySettings, Ignored, Module, ModuleDisplay}, nn::loss::Reduction, tensor::{activation::log_sigmoid, backend::Backend, Tensor}};
+use burn::{config::Config, module::{Content, DisplaySettings, Ignored, Module, ModuleDisplay}, nn::loss::Reduction, tensor::{activation::log_sigmoid, backend::Backend, linalg::{l2_norm, vector_normalize, Norm, DEFAULT_EPSILON}, Tensor}};
 
 /// Configuration for [NegEmbeddingLoss]
 #[derive(Config, Debug)]
@@ -51,19 +51,22 @@ impl NegEmbeddingLoss {
     positive: Tensor<B, 3>,
     negative: Tensor<B, 3>
   ) -> Tensor<B, 1> {
-    let unsqueezed_target = target.unsqueeze_dim(1);
+    let unsqueezed_target = vector_normalize(
+      target,
+      Norm::L2,
+      1,
+      DEFAULT_EPSILON
+    ).unsqueeze_dim(1);
 
     let positive_similarity: Tensor<B, 1> = unsqueezed_target.clone()
       .matmul(positive.swap_dims(1, 2)) // [batch_size, 1, context_window]
       .squeeze_dim::<2>(1) // [batch_size, context_window]
-      .mean_dim(1) // [batch_size, 1]
-      //.sum_dim(1) // [batch_size, 1]
+      .sum_dim(1) // [batch_size, 1]
       .squeeze_dim::<1>(1); // [batch_size]
     let negative_similarity: Tensor<B, 1> = unsqueezed_target
       .matmul(negative.swap_dims(1, 2)) // [batch_size, 1, context_window * neg_mult]
       .squeeze_dim::<2>(1) // [batch_size, context_window * neg_mult]
-      .mean_dim(1) // [batch_size, 1]
-      //.sum_dim(1) // [batch_size, 1]
+      .sum_dim(1) // [batch_size, 1]
       .squeeze_dim::<1>(1); // [batch_size]
 
     (log_sigmoid(positive_similarity) + log_sigmoid(-negative_similarity)).neg()
