@@ -35,12 +35,15 @@ pub struct IpContext {
   #[derivative(Debug="ignore")]
   context_indices: Arc<Vec<usize>>,
 
-  src_ip: Ipv4Addr,
-
+  /// Source IP of flow
+  pub src_ip: Ipv4Addr,
   dst_ip: Ipv4Addr,
-  dst_port: u16,
 
-  protocol: u8
+  /// Destination port of flow
+  pub dst_port: u16,
+
+  /// Internet protocol byte of flow
+  pub protocol: u8
 }
 
 impl IpContext {
@@ -91,7 +94,8 @@ impl PartialEq for ContextItem {
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Ip2VecDataset {
-  samples: IndexSet<IpContext>,
+  /// [IndexSet] containing all [IpContext] samples
+  pub samples: IndexSet<IpContext>,
 }
 
 impl Ip2VecDataset {
@@ -152,14 +156,11 @@ impl Ip2VecDataset {
     }
   }
 
-  /// Function for importing CSV data set from `path`
-  pub fn import_dataset<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
-  -> Result<Self>
+  fn deserialize<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
+  -> Result<Vec<IpContext>>
   where 
     R: std::io::Read
   {
-    //let mut reader = csv::Reader::from_path(path)?;
-
     // Construct map of column name to [FieldKind] enum
     let mut field_map: HashMap<String, FieldKind> = HashMap::new();
     field_map.insert(features.src_ip, FieldKind::SrcIp);
@@ -176,7 +177,7 @@ impl Ip2VecDataset {
     }
 
     // Deserialize for each record
-    let samples = reader
+    reader
       .records()
       .map(|res| {
         let record = res?;
@@ -207,10 +208,34 @@ impl Ip2VecDataset {
         // Construct and return deserialized [IpContext]
         Ok(IpContext::new(src_ip, dst_ip, dst_port, protocol))
       })
-      .collect::<Result<Vec<_>>>()?;
+      .collect::<Result<Vec<_>>>()
+  }
+
+  /// Function for importing CSV data set from `path`
+  pub fn import_dataset<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
+  -> Result<Self>
+  where 
+    R: std::io::Read
+  {
+    // Deserialize samples
+    let samples = Self::deserialize(reader, features)?;
 
     // Construct new dataset with deserialized samples
     Self::new(samples)
+  }
+
+  /// Function for importing CSV batch without validating for training, only for inference
+  pub fn import_batch<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
+  -> Result<Self>
+  where 
+    R: std::io::Read
+  {
+    // Deserialize samples
+    let samples = Self::deserialize(reader, features)?;
+
+    Ok(Self {
+      samples: samples.into_iter().collect()
+    })
   }
 
   /// Fetch index of context pair for sample at `idx`
