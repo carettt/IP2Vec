@@ -36,14 +36,15 @@ pub struct IpContext {
   context_indices: Arc<Vec<usize>>,
 
   /// Source IP of flow
-  pub src_ip: Ipv4Addr,
+  src_ip: Ipv4Addr,
+  /// Destination IP of flow
   dst_ip: Ipv4Addr,
 
   /// Destination port of flow
-  pub dst_port: u16,
+  dst_port: u16,
 
   /// Internet protocol byte of flow
-  pub protocol: u8
+  protocol: u8
 }
 
 impl IpContext {
@@ -258,6 +259,29 @@ impl Ip2VecDataset {
 
     Tensor::<B, 1>::from_data(sample_buffer.as_slice(), device)
       .reshape([sample_buffer.len() / dim, dim])
+  }
+
+  /// Get all features from dataset as `String`s in format [subnets, ports, protocols]
+  pub fn get_feature_strings(&self) -> [Vec<String>; 3] {
+    let dataset_size = self.samples.len();
+
+    let mut subnets = Vec::with_capacity(dataset_size);
+    let mut ports = Vec::with_capacity(dataset_size);
+    let mut protocols = Vec::with_capacity(dataset_size);
+
+    for sample in &self.samples {
+      let subnet = sample.src_ip.octets().into_iter()
+        .take(3)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(".");
+      
+      subnets.push(format!("{subnet}.0/24"));
+      ports.push(sample.dst_port.to_string());
+      protocols.push(sample.protocol.to_string());
+    }
+    
+    [subnets, ports, protocols]
   }
 }
 

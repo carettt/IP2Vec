@@ -18,9 +18,9 @@ fn main() -> Result<()> {
   let config = TrainingConfig::load(&config_path)?;
   let instance = DefaultRecorder::new().load(instance_path, device)?;
 
-  let mut subnets: Vec<String>;
-  let mut ports: Vec<String>;
-  let mut protocols: Vec<String>;
+  let subnets: Vec<String>;
+  let ports: Vec<String>;
+  let protocols: Vec<String>;
   let input_tensor: Tensor<Tch, 2>;
 
   match args.command {
@@ -59,21 +59,7 @@ fn main() -> Result<()> {
 
       input_tensor = dataset.batch_encode(device);
 
-      subnets = Vec::with_capacity(dataset.samples.len());
-      ports = Vec::with_capacity(dataset.samples.len());
-      protocols = Vec::with_capacity(dataset.samples.len());
-
-      for s in dataset.samples.iter() {
-        let subnet = s.src_ip.octets().into_iter()
-          .take(3)
-          .map(|i| i.to_string())
-          .collect::<Vec<_>>()
-          .join(".");
-        
-        subnets.push(format!("{subnet}.0/24"));
-        ports.push(s.dst_port.to_string());
-        protocols.push(s.protocol.to_string());
-      }
+      [subnets, ports, protocols] = dataset.get_feature_strings();
     }
   };
 
