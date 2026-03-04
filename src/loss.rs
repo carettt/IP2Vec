@@ -1,7 +1,7 @@
 //! Module containing logic for implementation of NEG loss from the Word2Vec
 //! paper (Mikolov et al., 2013)
 
-use burn::{config::Config, module::{Content, DisplaySettings, Ignored, Module, ModuleDisplay}, nn::loss::Reduction, tensor::{activation::log_sigmoid, backend::Backend, linalg::{l2_norm, vector_normalize, Norm, DEFAULT_EPSILON}, Tensor}};
+use burn::{config::Config, module::{Content, DisplaySettings, Ignored, Module, ModuleDisplay}, nn::loss::Reduction, tensor::{activation::log_sigmoid, backend::Backend, linalg::{vector_normalize, Norm, DEFAULT_EPSILON}, Tensor}};
 
 /// Configuration for [NegEmbeddingLoss]
 #[derive(Config, Debug)]

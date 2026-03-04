@@ -7,14 +7,14 @@ use std::{
 
 use derivative::*;
 use indexmap::IndexSet;
-use anyhow::{bail, anyhow, Context, Result};
+use anyhow::{bail, anyhow, Result};
 use burn::{
   data::dataset::Dataset, prelude::Backend, Tensor
 };
 
 #[cfg(test)] use proptest_derive::Arbitrary;
 #[cfg(test)] use proptest::prelude::*;
-use rand::{distr::{Distribution, StandardUniform}, seq::IteratorRandom, Rng};
+use rand::{seq::IteratorRandom, Rng};
 
 use crate::interface::ColumnFeatures;
 
