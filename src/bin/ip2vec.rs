@@ -26,10 +26,10 @@ fn main() -> Result<()> {
   match args.command {
     Commands::Single { features } => {
       let input = Sample::new(
-        features.src_ip,
-        features.dst_ip,
-        features.dst_port,
-        features.protocol
+        features.src_ip.into(),
+        features.dst_ip.into(),
+        features.dst_port.into(),
+        features.protocol.into()
       );
 
       input_tensor =
@@ -54,11 +54,10 @@ fn main() -> Result<()> {
     },
     Commands::Batch { file } => {
       let mut reader = csv::Reader::from_path(&file)?;
-      let dataset = Ip2VecDataset::import_batch(&mut reader, config.dataset_features)
-        .context("failed to import batch")?;
+      let dataset = Ip2VecDataset::deserialize(&mut reader, config.dataset_features)
+        .context("failed to deserialize batch")?;
 
       input_tensor = dataset.batch_encode(device);
-
       [subnets, ports, protocols] = dataset.get_feature_strings();
     }
   };

@@ -52,10 +52,12 @@ pub struct TrainingConfig {
   #[config(default = 1.0e-4)]
   learning_rate: f64,
   
+  /// Amount of positive context
   #[config(default = 5)]
-  context_window: usize,
+  pub context_window: usize,
+  /// Amount of negative context per positive context
   #[config(default = 5)]
-  neg_multiplier: usize
+  pub neg_multiplier: usize
 }
 
 impl ApplyOption for TrainingConfig {}

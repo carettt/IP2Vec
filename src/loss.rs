@@ -22,6 +22,7 @@ impl NegEmbeddingLossConfig {
 #[derive(Module, Clone, Debug)]
 #[module(custom_display)]
 pub struct NegEmbeddingLoss {
+  /// Reduction technique applied to loss tensor
   pub reduction: Ignored<Reduction>
 }
 

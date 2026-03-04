@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use rand::SeedableRng;
+
 use anyhow::{Context, Result};
 
 use burn::{config::Config, backend::{libtorch::LibTorchDevice, Autodiff}, optim::SgdConfig};
@@ -67,12 +69,16 @@ fn main() -> Result<()> {
     .apply_opt(TrainingConfig::with_batch_size, args.params.batch_size)
     .apply_opt(TrainingConfig::with_threads, args.params.threads)
     .apply_opt(TrainingConfig::with_learning_rate, args.params.learning_rate)
-    .apply_opt(TrainingConfig::with_context_window, args.params.context_window);
+    .apply_opt(TrainingConfig::with_context_window, args.params.context_window)
+    .apply_opt(TrainingConfig::with_neg_multiplier, args.params.neg_multiplier);
 
   // Import dataset with dynamic feature names
+  let mut rng = rand::rngs::StdRng::seed_from_u64(trainer.seed);
+
   let mut reader = csv::Reader::from_path(&dataset)?;
-  let dataset = Ip2VecDataset::import_dataset(&mut reader, features)
-    .context("failed to import dataset")?;
+  let mut dataset = Ip2VecDataset::deserialize(&mut reader, features)
+    .context("failed to deserialize dataset")?;
+  dataset.preprocess(&mut rng, trainer.context_window, trainer.neg_multiplier)?;
 
   // Initialize trainer
   trainer.init::<Tch>(&device)

@@ -33,10 +33,6 @@ enum FieldKind {
 #[derivative(Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Sample {
-  //#[cfg_attr(test, proptest(value = "Arc::default()"))]
-  //#[derivative(Debug="ignore")]
-  //context_indices: Arc<Vec<usize>>,
-  
   /// Source IP of flow
   src_ip: Arc<Ipv4Addr>,
   /// Destination IP of flow
@@ -49,7 +45,7 @@ pub struct Sample {
 
 impl Sample {
   /// Helper to create new [Sample] from data
-  fn new(
+  pub fn new(
     src_ip: Arc<Ipv4Addr>,
 		dst_ip: Arc<Ipv4Addr>,
 		dst_port: Arc<u16>,
@@ -79,7 +75,8 @@ impl Sample {
     data
   }
 
-  pub fn is_context(&self, other: &Self) -> bool {
+  /// Determine if `other` is a postive context to `self`
+  fn is_context(&self, other: &Self) -> bool {
     if other.src_ip == self.dst_ip {
       return true;
     }
@@ -173,7 +170,7 @@ impl Ip2VecDataset {
   }
 
   /// Function to derive and populate `contexts`
-  fn preprocess<R>(&mut self, rng: &mut R, context_window: usize, neg_multiplier: usize) 
+  pub fn preprocess<R>(&mut self, rng: &mut R, context_window: usize, neg_multiplier: usize) 
   -> Result<()>
   where 
     R: Rng
@@ -215,7 +212,8 @@ impl Ip2VecDataset {
     Ok(())
   }
 
-  fn deserialize<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
+  /// Deserialize dataset from CSV `reader` with column names `features`
+  pub fn deserialize<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
   -> Result<Ip2VecDataset>
   where 
     R: std::io::Read

@@ -118,5 +118,8 @@ pub struct TrainingParams {
 
   /// Amount of context examples per sample
   #[arg(short, long)]
-  pub context_window: Option<usize>
+  pub context_window: Option<usize>,
+  /// Amount of negative context examples per postive context
+  #[arg(short, long)]
+  pub neg_multiplier: Option<usize>
 }
