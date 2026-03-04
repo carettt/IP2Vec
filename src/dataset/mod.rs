@@ -13,6 +13,7 @@ use burn::{
 };
 
 #[cfg(test)] use proptest_derive::Arbitrary;
+use rand::{distr::{Distribution, StandardUniform}, seq::IteratorRandom, Rng};
 
 use crate::interface::ColumnFeatures;
 
@@ -27,31 +28,33 @@ enum FieldKind {
 }
 
 /// Abstract Struct containing contextual information about an IP from a flow
-#[derive(Derivative, Clone, PartialEq, Eq, Hash)]
-#[derivative(Debug)]
-#[cfg_attr(test, derive(Arbitrary))]
-pub struct IpContext {
-  #[cfg_attr(test, proptest(value = "Arc::default()"))]
-  #[derivative(Debug="ignore")]
-  context_indices: Arc<Vec<usize>>,
-
+#[derive(Derivative, Clone)]
+#[derivative(Debug, PartialEq, Eq, Hash)]
+//#[cfg_attr(test, derive(Arbitrary))]
+pub struct Sample {
+  //#[cfg_attr(test, proptest(value = "Arc::default()"))]
+  //#[derivative(Debug="ignore")]
+  //context_indices: Arc<Vec<usize>>,
+  
   /// Source IP of flow
-  src_ip: Ipv4Addr,
+  src_ip: Arc<Ipv4Addr>,
   /// Destination IP of flow
-  dst_ip: Ipv4Addr,
-
+  dst_ip: Arc<Ipv4Addr>,
   /// Destination port of flow
-  dst_port: u16,
-
+  dst_port: Arc<u16>,
   /// Internet protocol byte of flow
-  protocol: u8
+  protocol: Arc<u8>,
 }
 
-impl IpContext {
-  /// Helper to create new IpContext from data
-  pub fn new(src_ip: Ipv4Addr, dst_ip: Ipv4Addr, dst_port: u16, protocol: u8) -> Self {
+impl Sample {
+  /// Helper to create new [Sample] from data
+  fn new(
+    src_ip: Arc<Ipv4Addr>,
+		dst_ip: Arc<Ipv4Addr>,
+		dst_port: Arc<u16>,
+		protocol: Arc<u8>,
+  ) -> Self {
     Self {
-      context_indices: Arc::default(),
       src_ip,
       dst_ip,
       dst_port,
@@ -59,7 +62,7 @@ impl IpContext {
     }
   }
 
-  /// Encode [IpContext] to `Vec<f32>` of size 34 for tensorization
+  /// Encode [Sample] to `Vec<f32>` of size 34 for tensorization
   pub fn encode(&self) -> Vec<f32> {
     let mut data: Vec<f32> = Vec::with_capacity(34);
 
@@ -69,10 +72,24 @@ impl IpContext {
       data.push(((src_ip >> i) & 1) as f32);
     }
 
-    data.push(self.dst_port as f32 / 65535.0);
-    data.push(self.protocol as f32 / 255.0);
+    data.push(*self.dst_port as f32 / 65535.0);
+    data.push(*self.protocol as f32 / 255.0);
 
     data
+  }
+
+  pub fn is_context(&self, other: &Self) -> bool {
+    if other.src_ip == self.dst_ip {
+      return true;
+    }
+    if other.dst_port == self.dst_port {
+      return true;
+    }
+    if other.protocol == self.protocol {
+      return true;
+    }
+
+    false
   }
 }
 
@@ -80,8 +97,8 @@ impl IpContext {
 /// shape [context_window, 34]
 #[derive(Clone, Debug, Eq)]
 pub struct ContextItem {
-  target: IpContext,
-  context: Vec<IpContext>
+  target: Sample,
+  context: Vec<Sample>
 }
 
 impl PartialEq for ContextItem {
@@ -90,75 +107,115 @@ impl PartialEq for ContextItem {
   }
 }
 
-/// Struct containing indexed set of [IpContext] and a conversion map for fetching
+#[derive(Default, Debug, Clone)]
+struct SampleContext {
+  positive: HashSet<Arc<Sample>>, // [n, n*5]
+  negative: HashSet<Arc<Sample>>, // [n, n*15]
+}
+
+/// Struct containing indexed set of [Sample] and a conversion map for fetching
 /// a sample index for each `src_ip`.
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Ip2VecDataset {
-  /// [IndexSet] containing all [IpContext] samples
-  pub samples: IndexSet<IpContext>,
+  /// `HashSet` containing all [Sample]s
+  pub samples: HashSet<Arc<Sample>>, // [n]
+
+  hosts: HashSet<Arc<Ipv4Addr>>, // [n]
+  ports: HashSet<Arc<u16>>, // [n]
+  protocols: HashSet<Arc<u8>>, // [n]
+
+  contexts: Option<HashMap<Arc<Sample>, SampleContext>> // n*15 per n
 }
 
 impl Ip2VecDataset {
-  /// Helper function to generate a validated [Dataset] from a collection of
-  /// [IpContext]
-  fn new<T>(collection: T) -> Result<Self>
+  /// Create new empty dataset & populate data structures
+  fn new(data: Vec<(Ipv4Addr, Ipv4Addr, u16, u8)>) -> Self {
+    let n = data.len();
+
+    let mut dataset = Self {
+      samples: HashSet::with_capacity(n),
+
+      hosts: HashSet::with_capacity(n),
+      ports: HashSet::with_capacity(n),
+      protocols: HashSet::with_capacity(n),
+      
+      contexts: None
+    };
+
+    for sample_data in data {
+      let (src_ip, dst_ip, port, protocol) = sample_data;
+
+      // Allocate pointers
+      let src_ip = Arc::new(src_ip);
+      let dst_ip = Arc::new(dst_ip);
+      let port = Arc::new(port);
+      let protocol = Arc::new(protocol);
+
+      let sample = Arc::new(Sample::new(
+          Arc::clone(&src_ip),
+          Arc::clone(&dst_ip),
+          Arc::clone(&port),
+          Arc::clone(&protocol)
+      ));
+
+      // Populate data structures
+      dataset.hosts.insert(Arc::clone(&src_ip));
+      dataset.hosts.insert(Arc::clone(&dst_ip));
+      dataset.ports.insert(Arc::clone(&port));
+      dataset.protocols.insert(Arc::clone(&protocol));
+
+      dataset.samples.insert(Arc::clone(&sample));
+    }
+
+    dataset
+  }
+
+  /// Function to derive and populate `contexts`
+  fn preprocess<R>(&mut self, rng: &mut R, context_window: usize, neg_multiplier: usize) 
+  -> Result<()>
   where 
-    T: IntoIterator<Item = IpContext>
+    R: Rng
   {
-    let mut samples: IndexSet<IpContext> = IndexSet::from_iter(collection);
+    // Allocate `HashMap`
+    let mut contexts = HashMap::with_capacity(self.samples.len());
 
-    // Initialize new sample Vec and index map
-    let mut validated_samples: Vec<IpContext> =
-      Vec::with_capacity(samples.len());
-    let mut ip_to_idx: HashMap<Ipv4Addr, Vec<usize>> =
-      HashMap::with_capacity(samples.len());
-
-    // Remove samples without context
-    let mut valid = false;
-
-    while !valid {
-      let src_set: HashSet<Ipv4Addr> = samples.iter().map(|s| s.src_ip).collect();
-
-      validated_samples = samples.iter().cloned()
-        .filter(|s| src_set.contains(&s.dst_ip))
+    // Loop through samples
+    for sample in &self.samples.clone() {
+      // Take `context_window` positive samples from dataset
+      let positive: HashSet<Arc<Sample>> = self.samples.iter()
+        .filter(|other| sample.is_context(other))
+        .cloned()
+        .take(context_window)
         .collect();
 
-      if validated_samples.len() == samples.len() {
-        valid = true;
+      // Randomly sample `context_window * neg_multiplier` negative samples from dataset
+      let negative: HashSet<Arc<Sample>> = self.samples.iter()
+        .filter(|other| !sample.is_context(other))
+        .cloned()
+        .sample(rng, context_window * neg_multiplier)
+        .into_iter().collect();
+
+      if positive.len() != context_window || negative.len() != (context_window * neg_multiplier) {
+        // Prune samples with not enough context
+        self.samples.remove(sample);
+      } else {
+        // Populate contexts
+        contexts.insert(Arc::clone(sample), SampleContext { positive, negative });
       }
-
-      samples = validated_samples.iter().cloned().collect();
     }
 
-    // Fill `ip_to_idx` with indexes of each sample
-    for (i, sample) in samples.iter().enumerate() {
-      ip_to_idx.entry(sample.src_ip).or_default().push(i);
+    if self.samples.len() < 1 {
+      bail!("no samples left after preprocessing");
     }
 
-    // Wrap indices `Vec`s with an Arc to reduce memory usage
-    let shared_contexts: HashMap<Ipv4Addr, Arc<Vec<usize>>> = ip_to_idx.into_iter()
-      .map(|(ip, indices)| (ip, Arc::new(indices))).collect();
+    self.contexts = Some(contexts);
 
-
-    // Update samples with `context_indices`
-    for sample in validated_samples.iter_mut() {
-      sample.context_indices = shared_contexts.get(&sample.dst_ip)
-        .context("could not find context after validation")?.clone();
-    }
-
-    let samples: IndexSet<IpContext> =
-      IndexSet::from_iter(validated_samples.into_iter());
-
-    if samples.len() < 2 {
-      bail!("insufficient valid samples!")
-    } else {
-      Ok(Self { samples })
-    }
+    Ok(())
   }
 
   fn deserialize<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
-  -> Result<Vec<IpContext>>
+  -> Result<Ip2VecDataset>
   where 
     R: std::io::Read
   {
@@ -178,7 +235,7 @@ impl Ip2VecDataset {
     }
 
     // Deserialize for each record
-    reader
+    let sample_data = reader
       .records()
       .map(|res| {
         let record = res?;
@@ -206,38 +263,14 @@ impl Ip2VecDataset {
         let dst_port = dst_port.ok_or_else(|| anyhow!("record missing dst_port field"))?;
         let protocol = protocol.ok_or_else(|| anyhow!("record missing protocol field"))?;
 
-        // Construct and return deserialized [IpContext]
-        Ok(IpContext::new(src_ip, dst_ip, dst_port, protocol))
+        // Construct and return deserialized [Sample]
+        Ok((src_ip, dst_ip, dst_port, protocol))
       })
-      .collect::<Result<Vec<_>>>()
+      .collect::<Result<_>>()?;
+
+    Ok(Self::new(sample_data))
   }
 
-  /// Function for importing CSV data set from `path`
-  pub fn import_dataset<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
-  -> Result<Self>
-  where 
-    R: std::io::Read
-  {
-    // Deserialize samples
-    let samples = Self::deserialize(reader, features)?;
-
-    // Construct new dataset with deserialized samples
-    Self::new(samples)
-  }
-
-  /// Function for importing CSV batch without validating for training, only for inference
-  pub fn import_batch<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
-  -> Result<Self>
-  where 
-    R: std::io::Read
-  {
-    // Deserialize samples
-    let samples = Self::deserialize(reader, features)?;
-
-    Ok(Self {
-      samples: samples.into_iter().collect()
-    })
-  }
 
   /// Fetch index of context pair for sample at `idx`
   pub fn get_context_indices(&self, idx: usize) -> Result<Arc<Vec<usize>>> {
@@ -318,10 +351,10 @@ mod tests {
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
       prop::collection::vec(
-        any::<IpContext>()
+        any::<Sample>()
         , 10..500)
       .prop_filter_map("invalid dataset", |vec| {
-        Ip2VecDataset::new(vec).ok()
+        Ip2VecDataset::validate(vec).ok()
       })
       .boxed()
     }

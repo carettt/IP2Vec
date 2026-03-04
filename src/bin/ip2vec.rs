@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::{Ip2VecDataset, IpContext}, interface::{Commands, InferenceArgs}, to_array2, train::TrainingConfig, Tch};
+use ip2vec::{dataset::{Ip2VecDataset, Sample}, interface::{Commands, InferenceArgs}, to_array2, train::TrainingConfig, Tch};
 use petal_decomposition::{RandomizedPcaBuilder};
 
 fn main() -> Result<()> {
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
 
   match args.command {
     Commands::Single { features } => {
-      let input = IpContext::new(
+      let input = Sample::new(
         features.src_ip,
         features.dst_ip,
         features.dst_port,

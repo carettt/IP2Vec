@@ -8,7 +8,7 @@ use burn::{
 
 use crate::dataset::ContextItem;
 
-/// Batch of samples derived from [IpContext] into [Tensor]s
+/// Batch of samples derived from [Sample] into [Tensor]s
 #[derive(Debug, Clone)]
 pub struct ContextBatch<B: Backend> {
   /// 2D tensor of shape [batch_size, 34]
