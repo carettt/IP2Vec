@@ -21,7 +21,7 @@ pub struct ContextBatch<B: Backend> {
 
 impl<B: Backend> ContextBatch<B> {
   /// Helper function to create a new batch for testing (shouldn't be used)
-  pub fn new(
+  fn new(
     samples: Tensor<B, 2>,
     positive_context: Tensor<B, 3>,
     negative_context: Tensor<B, 3>
@@ -31,75 +31,36 @@ impl<B: Backend> ContextBatch<B> {
 }
 
 /// Struct implementing [Batcher] to transform [Dataset] into [ContextBatch]es.
-#[derive(Clone)]
-pub struct ContextBatcher {
-  context_window: usize,
-  neg_multiplier: usize
-}
-
-impl ContextBatcher {
-  /// Create new [ContextBatcher] with `context_window` for batch generation
-  pub fn new(context_window: usize, neg_multiplier: usize) -> Self {
-    Self { context_window, neg_multiplier }
-  }
-}
+#[derive(Default, Clone)]
+pub struct ContextBatcher {}
 
 impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
   fn batch(&self, items: Vec<ContextItem>, device: &B::Device) -> ContextBatch<B> {
     let batch_size = items.len();
+    let positive_count = items[0].context.positive.len();
+    let negative_count = items[0].context.negative.len();
 
     let mut sample_buffer = Vec::with_capacity(items.len());
-    let mut pos_context_buffer = Vec::with_capacity(items.len() * self.context_window);
-    let mut neg_context_buffer = Vec::with_capacity(items.len() * self.context_window * self.neg_multiplier);
+    let mut pos_context_buffer = Vec::with_capacity(items.len() * positive_count);
+    let mut neg_context_buffer = Vec::with_capacity(items.len() * negative_count);
 
     for item in items.iter() {
       let sample = item.target.encode();
 
-      let positive_count = self.context_window;
-      let negative_count = self.context_window * self.neg_multiplier;
-
-      let dim = sample.len();
-
-      // Positive targets
-      let positive_targets = items.iter()
-        .filter(|i| **i != *item)
-        .take(positive_count)
-        .flat_map(|i| i.target.encode())
-        .collect::<Vec<_>>();
-
-      // Negative targets
-      let negative_targets = items.iter()
-        .filter(|i| (**i != *item) && !(item.context.contains(&i.target)))
-        .take(negative_count)
-        .flat_map(|i| i.target.encode())
-        .collect::<Vec<_>>();
-
-
       // Update batch
       sample_buffer.extend(sample);
 
-      pos_context_buffer.extend(positive_targets);
-      neg_context_buffer.extend(negative_targets);
-
-      //if context_num < self.context_window {
-      //  let remainder = self.context_window - context_num;
-
-
-      //  context_buffer.extend(vec![0.0; remainder * sample_size]);
-      //  mask_buffer.extend(vec![0; remainder]);
-      //} else if context_num > self.context_window {
-      //  let remainder = context_num - self.context_window;
-
-      //  context_buffer.truncate(context_buffer.len() - (remainder * sample_size));
-      //  mask_buffer.truncate(mask_buffer.len() - remainder);
-      //}
+      pos_context_buffer.extend(item.context.positive.iter()
+        .flat_map(|c| c.encode()));
+      neg_context_buffer.extend(item.context.negative.iter()
+        .flat_map(|c| c.encode()));
     }
 
     let encoded_dim = sample_buffer.len() / batch_size;
 
     let sample_dims = [batch_size, encoded_dim];
-    let pos_context_dims = [batch_size, pos_context_buffer.len() / (batch_size * encoded_dim), encoded_dim];
-    let neg_context_dims = [batch_size, neg_context_buffer.len() / (batch_size * encoded_dim), encoded_dim];
+    let pos_context_dims = [batch_size, positive_count, encoded_dim];
+    let neg_context_dims = [batch_size, negative_count, encoded_dim];
 
     let samples =
       Tensor::<B, 1>::from_floats(sample_buffer.as_slice(), device)
@@ -132,7 +93,7 @@ mod tests {
   proptest! {
     #[test]
     fn batch_shape(
-      dataset in any::<Ip2VecDataset>()
+      dataset in any_with::<Ip2VecDataset>(true)
     ) {
       type Backend = burn::backend::LibTorch<f32>;
 
@@ -146,7 +107,7 @@ mod tests {
       let remainder = dataset.len() % num_batches;
 
       let mut batch_start = 0;
-      let batcher = ContextBatcher::new(5, 5);
+      let batcher = ContextBatcher::default();
 
       let mut batches = Vec::with_capacity(num_batches);
 
@@ -167,11 +128,14 @@ mod tests {
 
         batch_start = batch_end;
 
-        // TODO: add context validation later
+        eprintln!("samples: {:?}", batch.samples.dims());
+        eprintln!("positive_context: {:?}", batch.positive_context.dims());
+        eprintln!("negative_context: {:?}", batch.negative_context.dims());
+
         valid = valid &&
           (batch.samples.dims() == [batch_len, 34]) &&
-          //(batch.context.dims() == [batch_len, 4, 34]) &&
-          (batch.context_mask.dims() == [batch_len * batch.contexts.len()]);
+          (batch.positive_context.dims() == [batch_len, 5, 34]) &&
+          (batch.negative_context.dims() == [batch_len, 15, 34]);
 
         batches.push(batch);
       }
@@ -182,7 +146,7 @@ mod tests {
 
     #[test]
     fn batch_device(
-      dataset in any::<Ip2VecDataset>()
+      dataset in any_with::<Ip2VecDataset>(true)
     ) {
       type Backend = burn::backend::LibTorch<f32>;
 
@@ -196,7 +160,7 @@ mod tests {
       let remainder = dataset.len() % num_batches;
 
       let mut batch_start = 0;
-      let batcher = ContextBatcher::new(5, 5);
+      let batcher = ContextBatcher::default();
 
       let mut batches = Vec::with_capacity(num_batches);
 
@@ -215,14 +179,10 @@ mod tests {
 
         batch_start = batch_end;
 
-        //eprintln!("{:?}", batch.samples.device());
-        //eprintln!("{:?}", batch.contexts.device());
-        //eprintln!("{:?}", batch.context_mask.device());
-
         valid = valid &&
           (batch.samples.device() == device) &&
-          (batch.contexts[0].device() == device) &&
-          (batch.context_mask.device() == device);
+          (batch.positive_context.device() == device) &&
+          (batch.negative_context.device() == device);
 
         batches.push(batch);
       }

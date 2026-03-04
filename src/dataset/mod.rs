@@ -13,6 +13,7 @@ use burn::{
 };
 
 #[cfg(test)] use proptest_derive::Arbitrary;
+#[cfg(test)] use proptest::prelude::*;
 use rand::{distr::{Distribution, StandardUniform}, seq::IteratorRandom, Rng};
 
 use crate::interface::ColumnFeatures;
@@ -30,7 +31,7 @@ enum FieldKind {
 /// Abstract Struct containing contextual information about an IP from a flow
 #[derive(Derivative, Clone)]
 #[derivative(Debug, PartialEq, Eq, Hash)]
-//#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 pub struct Sample {
   //#[cfg_attr(test, proptest(value = "Arc::default()"))]
   //#[derivative(Debug="ignore")]
@@ -95,10 +96,10 @@ impl Sample {
 
 /// Encoded IPContext into target tensor of shape [34] and context tensor of
 /// shape [context_window, 34]
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Debug)]
 pub struct ContextItem {
-  target: Sample,
-  context: Vec<Sample>
+  target: Arc<Sample>,
+  context: SampleContext
 }
 
 impl PartialEq for ContextItem {
@@ -118,8 +119,8 @@ struct SampleContext {
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Ip2VecDataset {
-  /// `HashSet` containing all [Sample]s
-  pub samples: HashSet<Arc<Sample>>, // [n]
+  /// `IndexSet` containing all [Sample]s
+  pub samples: IndexSet<Arc<Sample>>, // [n]
 
   hosts: HashSet<Arc<Ipv4Addr>>, // [n]
   ports: HashSet<Arc<u16>>, // [n]
@@ -134,7 +135,7 @@ impl Ip2VecDataset {
     let n = data.len();
 
     let mut dataset = Self {
-      samples: HashSet::with_capacity(n),
+      samples: IndexSet::with_capacity(n),
 
       hosts: HashSet::with_capacity(n),
       ports: HashSet::with_capacity(n),
@@ -198,7 +199,7 @@ impl Ip2VecDataset {
 
       if positive.len() != context_window || negative.len() != (context_window * neg_multiplier) {
         // Prune samples with not enough context
-        self.samples.remove(sample);
+        self.samples.shift_remove(sample);
       } else {
         // Populate contexts
         contexts.insert(Arc::clone(sample), SampleContext { positive, negative });
@@ -271,19 +272,18 @@ impl Ip2VecDataset {
     Ok(Self::new(sample_data))
   }
 
-
-  /// Fetch index of context pair for sample at `idx`
-  pub fn get_context_indices(&self, idx: usize) -> Result<Arc<Vec<usize>>> {
-    if let Some(sample) = self.samples.get_index(idx) {
-      Ok(sample.context_indices.clone())
+  /// Fetch context for sample
+  fn get_context(&self, sample: &Arc<Sample>) -> Option<SampleContext> {
+    if let Some(contexts) = &self.contexts {
+      contexts.get(sample).cloned()
     } else {
-      bail!("could not find context for sample {idx}")
+      None
     }
   }
 
   /// Encode all dataset samples to a single Tensor, for inference
   pub fn batch_encode<B: Backend>(&self, device: &B::Device) -> Tensor<B, 2> {
-    let dim = self.samples[0].encode().len();
+    let dim = self.samples.iter().next().unwrap().encode().len();
     let mut sample_buffer: Vec<f32> = Vec::with_capacity(self.samples.len() * dim);
 
     for sample in &self.samples {
@@ -321,14 +321,10 @@ impl Ip2VecDataset {
 impl Dataset<ContextItem> for Ip2VecDataset {
   fn get(&self, idx: usize) -> Option<ContextItem> {
     let target = self.samples.get_index(idx)?;
-    let context: Vec<_> =
-      self.get_context_indices(idx).ok()?.iter()
-        .map(|i| self.samples.get_index(*i)
-          .and_then(|s| Some::<_>(s.clone())))
-        .collect::<Option<_>>()?;
+    let context = self.get_context(target)?;
 
     Some(ContextItem {
-      target: target.clone(),
+      target: Arc::clone(target),
       context
     })
   }
@@ -339,26 +335,43 @@ impl Dataset<ContextItem> for Ip2VecDataset {
 }
 
 #[cfg(test)]
+impl Arbitrary for Ip2VecDataset {
+  type Parameters = bool;
+  type Strategy = BoxedStrategy<Self>;
+
+  fn arbitrary_with(preprocessing: Self::Parameters) -> Self::Strategy {
+    prop::collection::vec((
+      any::<Ipv4Addr>(),
+      any::<Ipv4Addr>(),
+      any::<u16>(),
+      any::<u8>()
+    ), 10..500)
+    .prop_filter_map("failed to generate dataset", move |vec| {
+      let mut dataset = Ip2VecDataset::new(vec);
+
+      if preprocessing {
+        let mut rng = rand::rng();
+
+        if let Ok(_) = dataset.preprocess(&mut rng, 5, 3) {
+          Some(dataset)
+        } else {
+          None
+        }
+      } else {
+        Some(dataset)
+      }
+    })
+    .boxed()
+  }
+}
+
+#[cfg(test)]
 mod tests {
   use super::*;
+  use crate::Tch;
 
-  use proptest::prelude::*;
+  use burn::backend::libtorch::LibTorchDevice;
   use csv::Reader;
-
-  impl Arbitrary for Ip2VecDataset {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-      prop::collection::vec(
-        any::<Sample>()
-        , 10..500)
-      .prop_filter_map("invalid dataset", |vec| {
-        Ip2VecDataset::validate(vec).ok()
-      })
-      .boxed()
-    }
-  }
 
   fn csv_data_strategy() -> impl Strategy<Value = String> {
     prop::collection::vec(
@@ -383,20 +396,17 @@ mod tests {
     })
   }
 
-  #[test]
-  fn contextless() {
-    let dataset = Ip2VecDataset {
-      samples: IndexSet::new()
-    };
-
-    let result = dataset.get_context_indices(0);
-
-    assert!(result.is_err());
-  }
-
   proptest! {
     #[test]
-    fn ipcontext_deserialization(data in csv_data_strategy()) {
+    fn contextless(dataset in any::<Ip2VecDataset>()) {
+      let sample = dataset.samples.iter().next().unwrap();
+      let context = dataset.get_context(&sample);
+
+      prop_assert!(context.is_none());
+    }
+
+    #[test]
+    fn sample_deserialization(data in csv_data_strategy()) {
       let mut reader = Reader::from_reader(data.as_bytes());
       let features = ColumnFeatures {
         src_ip: String::from("IPV4_SRC_ADDR"),
@@ -405,30 +415,27 @@ mod tests {
         protocol: String::from("PROTOCOL")
       };
 
-      let res = Ip2VecDataset::import_dataset(&mut reader, features);
+      let res = Ip2VecDataset::deserialize(&mut reader, features);
 
       prop_assert!(res.is_ok());
     }
 
     #[test]
-    fn validation(dataset in any::<Ip2VecDataset>()) {
-      for i in 0..dataset.samples.len() {
-        let indices = dataset.get_context_indices(i).unwrap();
+    fn validation(dataset in any_with::<Ip2VecDataset>(true)) {
+      let opt = dataset.samples.iter()
+        .map(|s| dataset.get_context(s))
+        .collect::<Option<Vec<_>>>();
 
-        for i in indices.iter() {
-          let context = dataset.samples.get_index(*i);
-          prop_assert!(context.is_some());
-        }
-      }
+      prop_assert!(opt.is_some());
     }
 
     #[test]
     fn encoding(dataset in any::<Ip2VecDataset>()) {
-      for i in 0..dataset.samples.len() {
-        let item = dataset.get(i).unwrap();
+      let device = LibTorchDevice::Cuda(0);
 
-        prop_assert_eq!(item.target.encode().len(), 34);
-      }
+      let t = dataset.batch_encode::<Tch>(&device);
+
+      prop_assert_eq!(t.dims(), [dataset.samples.len(), 34]);
     }
   }
 }

@@ -154,59 +154,26 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{Tch, dataset::batch::ContextBatch};
+  use crate::{dataset::{batch::ContextBatch, Ip2VecDataset}, Tch};
 
   use proptest::prelude::*;
   use burn::backend::libtorch::LibTorchDevice;
 
-  fn batch_strategy() -> impl Strategy<Value = ContextBatch<Tch>> {
-    let device = LibTorchDevice::Cuda(0);
-
-    prop::collection::vec(
-      prop::collection::vec(
-        0..=1,
-        34
-      ),
-      2..10
-    ).prop_map(move |vec: Vec<Vec<i32>>| {
-      let batch_size = vec.len();
-      let context_window = 2;
-
-      let flattened: Vec<i32> = vec.into_iter().flatten().collect();
-      let target_data = TensorData::new(flattened, [batch_size, 34]);
-
-      let target: Tensor<Tch, 2> =
-        Tensor::from_data(target_data, &device);
-      let mut contexts: Tensor<Tch, 3> = 
-        Tensor::zeros([batch_size, context_window, target.dims()[1]], &device);
-      let mut context_mask = Tensor::zeros([batch_size, context_window], &device);
-
-      let dims = target.dims();
-
-      for i in 0..dims[0] {
-        contexts = contexts.slice_assign(s![i], target.clone().slice(s![0..2]).unsqueeze::<3>());
-        context_mask = context_mask.slice_fill(s![i, 0], 1);
-      }
-
-      ContextBatch::new(target, contexts, context_mask)
-    })
-  }
-
   proptest! {
     #[test]
-    fn output_shape(batch in batch_strategy()) {
+    fn output_shape(dataset in any::<Ip2VecDataset>()) {
       let device = LibTorchDevice::Cuda(0);
-
       let config = Ip2VecConfig::new();
-
-      let batch_size = batch.samples.dims()[0];
-      let embed_dim = config.src_ip_embed_dim + config.dst_port_embed_dim + config.protocol_embed_dim;
-
       let model = config.init::<Tch>(&device);
 
-      let output = model.forward(batch.samples, batch.contexts, batch.context_mask);
+      let batch_size = dataset.samples.len();
+      let embed_dim = config.src_ip_embed_dim + config.dst_port_embed_dim + config.protocol_embed_dim;
 
-      prop_assert_eq!(output.embeddings.dims(), [batch_size, embed_dim]);
+      let tensor = dataset.batch_encode(&device);
+
+      let output = model.embed(tensor);
+
+      prop_assert_eq!(output.dims(), [batch_size, embed_dim]);
     }
   }
 }

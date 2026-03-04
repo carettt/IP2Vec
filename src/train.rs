@@ -107,10 +107,7 @@ impl TrainingConfig {
     // Initialize dataset & dataloaders w/ batcher
     let (train, test) = self.split_dataset::<B, _>(dataset);
 
-    let batcher = ContextBatcher::new(
-      self.context_window,
-      self.neg_multiplier
-    );
+    let batcher = ContextBatcher::default();
     let cpu_device = LibTorchDevice::Cpu;
 
     let dataloader_train =
