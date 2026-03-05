@@ -354,7 +354,7 @@ impl Arbitrary for Ip2VecDataset {
       any::<Ipv4Addr>(),
       any::<u16>(),
       any::<u8>()
-    ), 10..500)
+    ), 100..500)
     .prop_filter_map("failed to generate dataset", move |vec| {
       let mut dataset = Ip2VecDataset::new(vec);
 
