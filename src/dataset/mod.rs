@@ -4,17 +4,17 @@
 use std::{
   collections::{HashMap, HashSet}, net::Ipv4Addr, sync::Arc
 };
+use rand::{Rng, RngExt};
 
 use derivative::*;
 use indexmap::IndexSet;
-use anyhow::{bail, anyhow, Result};
+use anyhow::{bail, anyhow, Context, Result};
 use burn::{
   data::dataset::Dataset, prelude::Backend, Tensor
 };
 
 #[cfg(test)] use proptest_derive::Arbitrary;
 #[cfg(test)] use proptest::prelude::*;
-use rand::{seq::IteratorRandom, Rng};
 
 use crate::interface::ColumnFeatures;
 
@@ -188,11 +188,22 @@ impl Ip2VecDataset {
         .collect();
 
       // Randomly sample `context_window * neg_multiplier` negative samples from dataset
-      let negative: HashSet<Arc<Sample>> = self.samples.iter()
-        .filter(|other| !sample.is_context(other))
-        .cloned()
-        .sample(rng, context_window * neg_multiplier)
-        .into_iter().collect();
+      let mut negative: HashSet<Arc<Sample>> = HashSet::with_capacity(context_window * neg_multiplier);
+
+      while negative.len() != (context_window * neg_multiplier) {
+        let i = rng.random_range(0..self.samples.len());
+        let other = self.samples.get_index(i).context("could not randomly select sample")?;
+
+        if !sample.is_context(other) {
+          negative.insert(Arc::clone(other));
+        }
+      }
+
+      //let negative: HashSet<Arc<Sample>> = self.samples.iter()
+      //  .filter(|other| !sample.is_context(other))
+      //  .cloned()
+      //  .sample(rng, context_window * neg_multiplier)
+      //  .into_iter().collect();
 
       if positive.len() != context_window || negative.len() != (context_window * neg_multiplier) {
         // Prune samples with not enough context
