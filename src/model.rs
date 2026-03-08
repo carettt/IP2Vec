@@ -14,28 +14,28 @@ use burn::{
 /// and `protocol` projection layers; totaling to a 150-d embedding tensor.
 #[derive(Config, Debug)]
 pub struct Ip2VecConfig {
-  #[config(default="100")]
+  #[config(default="128")]
   src_ip_embed_dim: usize,
-  #[config(default="25")]
+  #[config(default="16")]
   dst_port_embed_dim: usize,
-  #[config(default="25")]
-  protocol_embed_dim: usize
+  #[config(default="4")]
+  protocol_embed_dim: usize,
 }
 
 impl Ip2VecConfig {
   /// [Ip2Vec] initializer, can be overriden using `with_<CONFIG>` builder functions.
   pub fn init<B: Backend>(&self, device: &B::Device) -> Ip2Vec<B> {
-    let embed_dim =
+    let combined_dim =
       self.src_ip_embed_dim + self.dst_port_embed_dim + self.protocol_embed_dim;
 
     Ip2Vec {
       activation: nn::Gelu::new(),
 
       src_ip_input: nn::LinearConfig::new(32, self.src_ip_embed_dim).init(device),
-      dst_port_input: nn::LinearConfig::new(1, self.dst_port_embed_dim).init(device),
-      protocol_input: nn::LinearConfig::new(1, self.protocol_embed_dim).init(device),
+      dst_port_input: nn::EmbeddingConfig::new(65536, self.dst_port_embed_dim).init(device),
+      protocol_input: nn::EmbeddingConfig::new(256, self.protocol_embed_dim).init(device),
 
-      hidden: nn::LinearConfig::new(embed_dim, embed_dim).init(device)
+      hidden: nn::LinearConfig::new(combined_dim, combined_dim).init(device)
     }
   }
 }
@@ -47,21 +47,28 @@ pub struct Ip2Vec<B: Backend> {
   activation: nn::Gelu,
 
   src_ip_input: nn::Linear<B>,
-  dst_port_input: nn::Linear<B>,
-  protocol_input: nn::Linear<B>,
+  dst_port_input: nn::Embedding<B>,
+  protocol_input: nn::Embedding<B>,
 
-  hidden: nn::Linear<B>
+  hidden: nn::Linear<B>,
 }
 
 impl<B: Backend> Ip2Vec<B> {
   /// Embed tensor of shape [batch_size, 34] to tensor of shape [batch_size, 150]
-  pub fn embed(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
+  pub fn embed(
+    &self,
+    input: Tensor<B, 2>,
+  ) -> Tensor<B, 2> {
+    let src_ip = input.clone().slice(s![.., 0..32]);
+    let dst_port = (input.clone().slice(s![.., 32]) * 65535.0).int();
+    let protocol = (input.clone().slice(s![.., 33]) * 255.0).int();
+
     let src_ip_proj = self.activation.forward(
-      self.src_ip_input.forward(input.clone().narrow(1, 0, 32)));
+      self.src_ip_input.forward(src_ip));
     let dst_port_proj = self.activation.forward(
-      self.dst_port_input.forward(input.clone().narrow(1, 32, 1)));
+      self.dst_port_input.forward(dst_port).squeeze());
     let protocol_proj = self.activation.forward(
-      self.protocol_input.forward(input.clone().narrow(1, 33, 1)));
+      self.protocol_input.forward(protocol).squeeze());
 
     let combined = Tensor::cat(vec![src_ip_proj, dst_port_proj, protocol_proj], 1);
 
