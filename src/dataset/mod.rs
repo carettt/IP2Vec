@@ -7,7 +7,6 @@ use std::{
 use rand::{Rng, RngExt};
 
 use derivative::*;
-use indexmap::IndexSet;
 use anyhow::{bail, anyhow, Context, Result};
 use burn::{
   data::dataset::Dataset, prelude::Backend, Tensor
@@ -117,7 +116,7 @@ struct SampleContext {
 #[cfg_attr(test, derive(Debug))]
 pub struct Ip2VecDataset {
   /// `IndexSet` containing all [Sample]s
-  pub samples: IndexSet<Arc<Sample>>, // [n]
+  pub samples: Vec<Arc<Sample>>, // [n]
 
   hosts: HashSet<Arc<Ipv4Addr>>, // [n]
   ports: HashSet<Arc<u16>>, // [n]
@@ -132,7 +131,7 @@ impl Ip2VecDataset {
     let n = data.len();
 
     let mut dataset = Self {
-      samples: IndexSet::with_capacity(n),
+      samples: Vec::with_capacity(n),
 
       hosts: HashSet::with_capacity(n),
       ports: HashSet::with_capacity(n),
@@ -163,7 +162,7 @@ impl Ip2VecDataset {
       dataset.ports.insert(Arc::clone(&port));
       dataset.protocols.insert(Arc::clone(&protocol));
 
-      dataset.samples.insert(Arc::clone(&sample));
+      dataset.samples.push(Arc::clone(&sample));
     }
 
     dataset
@@ -192,7 +191,7 @@ impl Ip2VecDataset {
 
       while negative.len() != (context_window * neg_multiplier) {
         let i = rng.random_range(0..self.samples.len());
-        let other = self.samples.get_index(i).context("could not randomly select sample")?;
+        let other = &self.samples[i];
 
         if !sample.is_context(other) {
           negative.insert(Arc::clone(other));
@@ -207,7 +206,8 @@ impl Ip2VecDataset {
 
       if positive.len() != context_window || negative.len() != (context_window * neg_multiplier) {
         // Prune samples with not enough context
-        self.samples.shift_remove(sample);
+        self.samples.swap_remove(self.samples.iter().position(|s| s == sample)
+            .context("could not prune sample with insufficient context")?);
       } else {
         // Populate contexts
         contexts.insert(Arc::clone(sample), SampleContext { positive, negative });
@@ -329,7 +329,7 @@ impl Ip2VecDataset {
 
 impl Dataset<ContextItem> for Ip2VecDataset {
   fn get(&self, idx: usize) -> Option<ContextItem> {
-    let target = self.samples.get_index(idx)?;
+    let target = &self.samples[idx];
     let context = self.get_context(target)?;
 
     Some(ContextItem {

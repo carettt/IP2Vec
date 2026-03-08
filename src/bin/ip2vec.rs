@@ -8,7 +8,7 @@ fn main() -> Result<()> {
   let args = InferenceArgs::parse();
   let device = &burn::backend::libtorch::LibTorchDevice::Cuda(0);
 
-  let artifact_dir = args.config;
+  let artifact_dir = args.store;
 
   let mut config_path = artifact_dir.clone();
   config_path.push("config.json");

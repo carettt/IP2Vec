@@ -2595,7 +2595,6 @@ dependencies = [
  "clap",
  "csv",
  "derivative",
- "indexmap",
  "ndarray 0.17.2",
  "ndarray-linalg",
  "petal-decomposition",

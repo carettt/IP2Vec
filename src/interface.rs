@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct InferenceArgs {
   /// Path to configuration folder containing model.mpk and config.json
   #[arg(short, long)]
-  pub config: PathBuf,
+  pub store: PathBuf,
 
   /// Whether to save PCA projection to CSV file
   #[arg(long)]

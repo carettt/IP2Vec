@@ -7,10 +7,7 @@ use crate::{
 };
 
 use burn::{
-  prelude::*,
-  backend::libtorch::LibTorchDevice,
-  tensor::{backend::AutodiffBackend, Transaction},
-  train::{TrainOutput, TrainStep, ValidStep}
+  backend::libtorch::LibTorchDevice, prelude::*, tensor::{backend::AutodiffBackend, Transaction}, train::{TrainOutput, TrainStep, ValidStep}
 };
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
