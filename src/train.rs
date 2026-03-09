@@ -146,10 +146,13 @@ impl TrainingConfig {
         self.learning_rate
       );
 
+    let mut save_path = self.artifact_path.clone();
+    save_path.push("model.mpk");
+
     // Fit model and save
     learner.fit(dataloader_train, dataloader_test)
       .model
-      .save_file(&self.artifact_path, &DefaultRecorder::new())
+      .save_file(&save_path, &DefaultRecorder::new())
       .expect("could not fit model");
   }
 }
