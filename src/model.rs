@@ -7,7 +7,7 @@ use crate::{
 };
 
 use burn::{
-  backend::libtorch::LibTorchDevice, prelude::*, tensor::{backend::AutodiffBackend, Transaction}, train::{TrainOutput, TrainStep, ValidStep}
+  backend::libtorch::LibTorchDevice, prelude::*, tensor::{backend::AutodiffBackend, linalg::{vector_normalize, Norm, DEFAULT_EPSILON}, Transaction}, train::{TrainOutput, TrainStep, ValidStep}
 };
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
@@ -72,7 +72,12 @@ impl<B: Backend> Ip2Vec<B> {
 
     let combined = Tensor::cat(vec![src_ip_proj, dst_port_proj, protocol_proj], 1);
 
-    self.hidden.forward(combined)
+    vector_normalize(
+      self.hidden.forward(combined),
+      Norm::L2,
+      1,
+      DEFAULT_EPSILON
+    )
   }
 
   /// Flatten batch fields, perform forward passes and compute loss
