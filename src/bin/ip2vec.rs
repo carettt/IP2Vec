@@ -4,6 +4,8 @@ use clap::Parser;
 use ip2vec::{dataset::{Ip2VecDataset, Sample}, interface::{Commands, InferenceArgs, Reduction}, to_array2, train::TrainingConfig, Tch};
 use petal_decomposition::{RandomizedPca, RandomizedPcaBuilder};
 
+static _GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> Result<()> {
   let args = InferenceArgs::parse();
   let device = &burn::backend::libtorch::LibTorchDevice::Cuda(0);

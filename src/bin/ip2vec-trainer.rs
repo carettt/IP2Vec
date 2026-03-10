@@ -11,6 +11,8 @@ use ip2vec::{
   dataset::Ip2VecDataset, interface::{ColumnFeatures, TrainerArgs}, model::Ip2VecConfig, train::{ApplyOption, TrainingConfig}, Tch
 };
 
+static _GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> Result<()> {
   // Parse arguments from CLI
   let args = TrainerArgs::parse();

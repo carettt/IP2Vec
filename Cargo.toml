@@ -1,6 +1,6 @@
 [package]
 name = "ip2vec"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
@@ -22,9 +22,20 @@ burn = { version = "~0.19", features = [
   "tch", "fusion", "autodiff"
 ], default-features = false }
 
+mimalloc = { version = "~0.1", features = ["v3"] }
+
 [dev-dependencies]
 proptest = "1.8.0"
 proptest-derive = "0.6.0"
+
+# Uncomment for native CPU instructions
+#[build]
+#rustflags = [ "-C", "target-cpu=native" ]
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
 
 [profile.experiment]
 inherits = "release"
