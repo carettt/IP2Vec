@@ -13,10 +13,6 @@ pub struct InferenceArgs {
   #[arg(short, long)]
   pub store: PathBuf,
 
-  /// Whether to save PCA projection to CSV file
-  #[arg(long)]
-  pub pca: bool,
-
   /// Input subcommand
   #[command(subcommand)]
   pub command: Commands
@@ -42,6 +38,25 @@ pub struct TrainerArgs {
   pub store: Option<PathBuf>
 }
 
+/// Enum containing dimensionality reduction subcommands
+#[derive(Subcommand, Debug, Clone)]
+pub enum Reduction {
+  /// Randomized PCA reduction
+  Pca {
+    /// Amount of dimensions to reduce to
+    #[arg(conflicts_with="load_fit")]
+    dim: Option<usize>,
+
+    /// Whether to load PCA model fitting from file
+    #[arg(long, conflicts_with="save_fit")]
+    load_fit: bool,
+
+    /// Whether to save PCA model fitting to file
+    #[arg(long, conflicts_with="load_fit")]
+    save_fit: bool
+  }
+}
+
 /// Enum containing inference subcommands
 #[derive(Subcommand, Debug)]
 pub enum Commands {
@@ -49,13 +64,31 @@ pub enum Commands {
   Single {
     /// Input data features
     #[command(flatten)]
-    features: DataFeatures
+    features: DataFeatures,
+
+    /// Reduction selection subcommand
+    #[command(subcommand)]
+    reduction: Option<Reduction>
   },
 
   /// File batch inference
   Batch {
     /// Path to batch
     file: PathBuf,
+
+    /// Reduction selection subcommand
+    #[command(subcommand)]
+    reduction: Option<Reduction>
+  }
+}
+
+impl Commands {
+  /// Extract nested reduction subcommand
+  pub fn get_reduction(&self) -> Option<Reduction> {
+    match self {
+      Self::Single { reduction, ..} => reduction.clone(),
+      Self::Batch { reduction, .. } => reduction.clone(),
+    }
   }
 }
 

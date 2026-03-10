@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::{Ip2VecDataset, Sample}, interface::{Commands, InferenceArgs}, to_array2, train::TrainingConfig, Tch};
-use petal_decomposition::{RandomizedPcaBuilder};
+use ip2vec::{dataset::{Ip2VecDataset, Sample}, interface::{Commands, InferenceArgs, Reduction}, to_array2, train::TrainingConfig, Tch};
+use petal_decomposition::{RandomizedPca, RandomizedPcaBuilder};
 
 fn main() -> Result<()> {
   let args = InferenceArgs::parse();
@@ -23,8 +23,10 @@ fn main() -> Result<()> {
   let protocols: Vec<String>;
   let input_tensor: Tensor<Tch, 2>;
 
+  let reduction = args.command.get_reduction();
+
   match args.command {
-    Commands::Single { features } => {
+    Commands::Single { features, .. } => {
       let input = Sample::new(
         features.src_ip.into(),
         features.dst_ip.into(),
@@ -52,7 +54,7 @@ fn main() -> Result<()> {
         features.protocol.to_string()
       ];
     },
-    Commands::Batch { file } => {
+    Commands::Batch { file, .. } => {
       let mut reader = csv::Reader::from_path(&file)?;
       let dataset = Ip2VecDataset::deserialize(&mut reader, config.dataset_features)
         .context("failed to deserialize batch")?;
@@ -67,41 +69,74 @@ fn main() -> Result<()> {
   let embedding = model.embed(input_tensor);
   println!("{}", embedding);
 
-  if args.pca {
-    println!("starting PCA decomposition");
+  if let Some(reduction) = reduction {
+    match reduction {
+      Reduction::Pca { dim, save_fit, load_fit } => {
+        let output_path = "./pca.csv";
 
-    let dim = 3;
-    let mut headers = (1..=dim).map(|i| format!("pc{}", i)).collect::<Vec<_>>();
-    headers.push("subnet_24".to_string());
-    headers.push("port".to_string());
-    headers.push("protocol".to_string());
+        let arr = to_array2(&embedding)?.to_owned();
+        let mut writer = csv::Writer::from_path(&output_path)?;
 
-    let mut writer = csv::Writer::from_path("./pca.csv")?;
+        let mut pca: RandomizedPca<f32, _>;
 
-    let arr = to_array2(&embedding)?.to_owned();
+        if load_fit {
+          let mut fit_path = artifact_dir.clone();
+          fit_path.push("pca_fit.mpk");
 
-    let mut pca = RandomizedPcaBuilder::new(dim).seed(config.seed.into()).build();
-    let projection = pca.fit_transform(&arr)?;
+          let fit_file = std::fs::File::open(&fit_path)
+            .context("could not open PCA fitting save file")?;
 
-    println!("variance: {}",
-      pca.explained_variance_ratio().iter().enumerate()
-      .map(|(i, v)| format!("PC{}: {} ", i+1, v)).collect::<String>()
-    );
+          pca = rmp_serde::decode::from_read(fit_file)?;
+        } else {
+          let dim = dim
+            .context("dim is a required argument if not loading a PCA fitting save file")?;
 
-    writer.write_record(headers)?;
+          pca = RandomizedPcaBuilder::new(dim).seed(config.seed.into()).build();
+          println!("starting PCA decomposition");
+          pca.fit(&arr)?;
+        }
 
-    for (i, row) in projection.rows().into_iter().enumerate() {
-      let mut record: Vec<String> = row.iter().map(|v| v.to_string()).collect();
-      record.push(subnets[i].clone());
-      record.push(ports[i].clone());
-      record.push(protocols[i].clone());
+        let mut headers = (1..=pca.n_components())
+          .map(|i| format!("pc{}", i)).collect::<Vec<_>>();
+        headers.push("subnet_24".to_string());
+        headers.push("port".to_string());
+        headers.push("protocol".to_string());
 
-      writer.write_record(&record)?;
+        let projection = pca.transform(&arr)?;
+
+        println!("variance: {}",
+          pca.explained_variance_ratio().iter().enumerate()
+          .map(|(i, v)| format!("PC{}: {} ", i+1, v)).collect::<String>()
+        );
+
+        writer.write_record(headers)?;
+
+        for (i, row) in projection.rows().into_iter().enumerate() {
+          let mut record: Vec<String> = row.iter().map(|v| v.to_string()).collect();
+          record.push(subnets[i].clone());
+          record.push(ports[i].clone());
+          record.push(protocols[i].clone());
+
+          writer.write_record(&record)?;
+        }
+
+        writer.flush()?;
+        println!("saved components to {output_path}");
+
+        if save_fit {
+          let mut save_path = artifact_dir.clone();
+          save_path.push("pca_fit.mpk");
+
+          let mut save_file = std::fs::File::create_new(&save_path)
+            .context("PCA fitting save file already exists")?;
+
+          rmp_serde::encode::write(&mut save_file, &pca)
+            .context("unable to serialize PCA fit")?;
+
+          println!("saved PCA fit to {}", save_path.display());
+        }
+      }
     }
-
-    writer.flush()?;
-
-    println!("saved components to ./pca.csv");
   }
 
   Ok(())
