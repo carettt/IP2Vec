@@ -16,10 +16,15 @@ use burn::{
 pub struct Ip2VecConfig {
   #[config(default="128")]
   src_ip_embed_dim: usize,
-  #[config(default="16")]
+  #[config(default="32")]
   dst_port_embed_dim: usize,
   #[config(default="4")]
   protocol_embed_dim: usize,
+
+  #[config(default="256")]
+  fusion_dim: usize,
+  #[config(default="128")]
+  compression_dim: usize
 }
 
 impl Ip2VecConfig {
@@ -35,7 +40,9 @@ impl Ip2VecConfig {
       dst_port_input: nn::EmbeddingConfig::new(65536, self.dst_port_embed_dim).init(device),
       protocol_input: nn::EmbeddingConfig::new(256, self.protocol_embed_dim).init(device),
 
-      hidden: nn::LinearConfig::new(combined_dim, combined_dim).init(device)
+      fusion: nn::LinearConfig::new(combined_dim, self.fusion_dim).init(device),
+
+      compression: nn::LinearConfig::new(self.fusion_dim, self.compression_dim).init(device)
     }
   }
 }
@@ -50,7 +57,9 @@ pub struct Ip2Vec<B: Backend> {
   dst_port_input: nn::Embedding<B>,
   protocol_input: nn::Embedding<B>,
 
-  hidden: nn::Linear<B>,
+  fusion: nn::Linear<B>,
+  
+  compression: nn::Linear<B>,
 }
 
 impl<B: Backend> Ip2Vec<B> {
@@ -72,8 +81,10 @@ impl<B: Backend> Ip2Vec<B> {
 
     let combined = Tensor::cat(vec![src_ip_proj, dst_port_proj, protocol_proj], 1);
 
+    let fused = self.activation.forward(self.fusion.forward(combined));
+    
     vector_normalize(
-      self.hidden.forward(combined),
+      self.compression.forward(fused),
       Norm::L2,
       1,
       DEFAULT_EPSILON
