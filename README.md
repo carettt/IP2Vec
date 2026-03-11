@@ -5,6 +5,26 @@ to variable dimension vector embeddings. Contains training binary and inference 
 dimensionality reduction for batches of samples and single flows. Configurable through the CLI or
 through the library APIs.
 
+### Dependencies
+Both binaries depend on `libtorch` (C++ library for PyTorch). This is not bundled
+with the binaries. Ensure `libtorch` is downloaded and is included in the
+`LD_LIBRARY_PATH` environment variable:
+
+```zsh
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/libtorch/lib
+```
+
+### Installation
+Currently, only Linux is supported. See releases for latest release.
+
+```zsh
+tar -xzf ip2vec-v{VERSION}-bundle.tar.gz --one-top-level
+```
+
+This will extract the binaries and the required dependencies to a new folder.
+It is important to run the binaries from the `bin/` folder as they are patched
+to find dependencies at `$ORIGIN/../lib`.
+
 ### Usage
 
 #### Training
