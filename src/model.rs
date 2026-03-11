@@ -187,7 +187,7 @@ mod tests {
       let model = config.init::<Tch>(&device);
 
       let batch_size = dataset.samples.len();
-      let embed_dim = config.src_ip_embed_dim + config.dst_port_embed_dim + config.protocol_embed_dim;
+      let embed_dim = config.compression_dim;
 
       let tensor = dataset.batch_encode(&device);
 
