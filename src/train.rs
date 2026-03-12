@@ -1,6 +1,6 @@
 //! Module containing training functionality such as metrics
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
 
 use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::Ip2VecConfig, Tch};
 
@@ -10,6 +10,14 @@ use burn::{
   }, LearnerBuilder, LearningStrategy}
 };
 use anyhow::Result;
+
+static SYNC_DEVICE: LazyLock<LibTorchDevice> = LazyLock::new(|| {
+  if std::env::var("IP2VEC_DUAL_GPU").is_ok() {
+    return LibTorchDevice::Cuda(1);
+  } else {
+    return LibTorchDevice::Cpu;
+  }
+});
 
 /// Trait for applying an `Option` to a `struct` with builder-like config functions
 pub trait ApplyOption: Sized {
@@ -194,7 +202,7 @@ impl<B: Backend> Adaptor<CpuUse> for EmbeddingOutput<B> {
 impl<B: Backend> ItemLazy for EmbeddingOutput<B> {
   type ItemSync = EmbeddingOutput<Tch>;
 
-  fn sync(self) -> EmbeddingOutput<Tch> {
+  fn sync(self) -> Self::ItemSync {
     let [embeddings, loss] = Transaction::default()
       .register(self.embeddings)
       .register(self.loss)
@@ -202,7 +210,7 @@ impl<B: Backend> ItemLazy for EmbeddingOutput<B> {
       .try_into()
       .expect("could not sync embedding output");
 
-    let device = &burn::backend::libtorch::LibTorchDevice::Cuda(1);
+    let device = &*SYNC_DEVICE;
 
     EmbeddingOutput {
       embeddings: Tensor::from_data(embeddings, device),

@@ -174,7 +174,7 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{dataset::{batch::ContextBatch, Ip2VecDataset}, Tch};
+  use crate::{dataset::Ip2VecDataset, Tch};
 
   use proptest::prelude::*;
   use burn::backend::libtorch::LibTorchDevice;

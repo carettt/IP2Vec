@@ -27,6 +27,12 @@ to find dependencies at `$ORIGIN/../lib`.
 
 ### Usage
 
+If you intend to run the `ip2vec-trainer` binary on a dual-gpu system, ensure that
+the following environment variable is set (to anything).
+```zsh
+export IP2VEC_DUAL_GPU=1
+```
+
 #### Training
 ```
 $> ip2vec-trainer --help
