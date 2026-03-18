@@ -74,10 +74,7 @@ fn main() -> Result<()> {
   if let Some(reduction) = reduction {
     match reduction {
       Reduction::Pca { dim, save_fit, load_fit } => {
-        let output_path = "./pca.csv";
-
         let arr = to_array2(&embedding)?.to_owned();
-        let mut writer = csv::Writer::from_path(&output_path)?;
 
         let mut pca: RandomizedPca<f32, _>;
 
@@ -98,12 +95,6 @@ fn main() -> Result<()> {
           pca.fit(&arr)?;
         }
 
-        let mut headers = (1..=pca.n_components())
-          .map(|i| format!("pc{}", i)).collect::<Vec<_>>();
-        headers.push("subnet_24".to_string());
-        headers.push("port".to_string());
-        headers.push("protocol".to_string());
-
         let projection = pca.transform(&arr)?;
 
         println!("variance: {}",
@@ -111,19 +102,14 @@ fn main() -> Result<()> {
           .map(|(i, v)| format!("PC{}: {} ", i+1, v)).collect::<String>()
         );
 
-        writer.write_record(headers)?;
-
-        for (i, row) in projection.rows().into_iter().enumerate() {
-          let mut record: Vec<String> = row.iter().map(|v| v.to_string()).collect();
-          record.push(subnets[i].clone());
-          record.push(ports[i].clone());
-          record.push(protocols[i].clone());
-
-          writer.write_record(&record)?;
-        }
-
-        writer.flush()?;
-        println!("saved components to {output_path}");
+        ip2vec::save_output(
+          projection.outer_iter()
+            .map(|row| row.to_vec())
+            .collect(),
+					"./pca.csv",
+					"pc",
+          Some(vec![subnets, ports, protocols]),
+        )?;
 
         if save_fit {
           let mut save_path = artifact_dir.clone();

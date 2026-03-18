@@ -33,3 +33,40 @@ pub fn to_array2<B: Backend>(tensor: &Tensor<B, 2>) -> Result<Array2<f32>> {
 
   Ok(Array2::from_shape_vec((n_rows, n_cols), vec)?)
 }
+
+/// Save output matrix to CSV file
+pub fn save_output(
+  data: Vec<Vec<f32>>,
+	output_path: &str,
+	prefix: &str,
+  features: Option<Vec<Vec<String>>>,
+) -> Result<()> {
+  let dim = data[0].len();
+  let mut writer = csv::Writer::from_path(&output_path)?;
+
+  let mut headers = (1..=dim)
+    .map(|i| format!("{prefix}{}", i)).collect::<Vec<_>>();
+  headers.push("subnet_24".to_string());
+  headers.push("port".to_string());
+  headers.push("protocol".to_string());
+
+  writer.write_record(headers)?;
+
+  for (i, row) in data.iter().enumerate() {
+    let mut record: Vec<String> = row.iter().map(|v| v.to_string()).collect();
+
+    if let Some(features) = &features {
+      for feature in features {
+        record.push(feature[i].clone());
+      }
+    }
+
+    writer.write_record(&record)?;
+  }
+
+  writer.flush()?;
+  println!("saved components to {output_path}");
+
+  Ok(())
+}
+
