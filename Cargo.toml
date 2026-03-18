@@ -15,8 +15,7 @@ rmp-serde = "~1.3"
 
 rand = { version = "~0.10", features = ["alloc"] }
 ndarray = "~0.17"
-ndarray-linalg = { version = "~0.18", features = ["openblas-system"] }
-petal-decomposition = { version = "~0.9", features = ["openblas-system", "serialization"] }
+petal-decomposition = { version = "~0.9", features = ["openblas-static", "serialization"] }
 
 burn = { version = "~0.19", features = [
   "tui", "train", "metrics",

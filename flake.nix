@@ -28,9 +28,6 @@
 
     runtimeDeps = [
       pkgs.openssl
-
-      pkgs.openblas
-      pkgs.lapack
     ];
   in {
     devShells.${system}.default = pkgs.mkShell (let
