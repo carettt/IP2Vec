@@ -3,6 +3,7 @@
 use std::{path::PathBuf, sync::LazyLock};
 
 use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::Ip2VecConfig, Tch};
+use crate::ApplyOption;
 
 use burn::{
   backend::libtorch::LibTorchDevice, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
@@ -18,17 +19,6 @@ static SYNC_DEVICE: LazyLock<LibTorchDevice> = LazyLock::new(|| {
     return LibTorchDevice::Cpu;
   }
 });
-
-/// Trait for applying an `Option` to a `struct` with builder-like config functions
-pub trait ApplyOption: Sized {
-  /// Apply `val` to `f` if `Some`, otherwise return self unchanged
-  fn apply_opt<T>(self, f: impl FnOnce(Self, T) -> Self, val: Option<T>) -> Self {
-    match val {
-      Some(val) => f(self, val),
-      None => self
-    }
-  }
-}
 
 /// Struct containing various training parameters, including optimizer and model
 /// configuration objects ([Ip2VecConfig], [SgdConfig])

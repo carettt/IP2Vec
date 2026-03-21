@@ -1,8 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use burn::{config::Config, module::Module, record::{DefaultRecorder, Recorder}, Tensor};
 use clap::Parser;
-use ip2vec::{dataset::{Ip2VecDataset, Sample}, interface::{Commands, InferenceArgs, Reduction}, to_array2, train::TrainingConfig, Tch};
+use ip2vec::{dataset::{Ip2VecDataset, Sample}, interface::{Commands, InferenceArgs, Reduction}, to_array2, train::TrainingConfig, ApplyOption, Tch};
 use petal_decomposition::{RandomizedPca, RandomizedPcaBuilder};
+use bhtsne::tSNE;
+use rand::SeedableRng;
+use rand::seq::IteratorRandom;
 
 static _GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -72,11 +75,11 @@ fn main() -> Result<()> {
   println!("{}", embedding);
 
   if let Some(reduction) = reduction {
+    let mut pca: RandomizedPca<f32, _>;
+
     match reduction {
       Reduction::Pca { dim, save_fit, load_fit } => {
         let arr = to_array2(&embedding)?.to_owned();
-
-        let mut pca: RandomizedPca<f32, _>;
 
         if load_fit {
           let mut fit_path = artifact_dir.clone();
@@ -123,7 +126,53 @@ fn main() -> Result<()> {
 
           println!("saved PCA fit to {}", save_path.display());
         }
-      }
+      },
+      Reduction::Tsne {
+        dim,
+        theta,
+        perplexity,
+        epochs
+      } => {
+        let arr = to_array2(&embedding)?.to_owned();
+
+        let mut fit_path = artifact_dir.clone();
+        fit_path.push("pca_fit.mpk");
+
+        let fit_file = std::fs::File::open(&fit_path)
+          .context("couldn't find PCA fitting, need to fit PCA for initial reduction")?;
+
+        pca = rmp_serde::decode::from_read(fit_file)?;
+
+        let data = pca.transform(&arr)?;
+
+        let projection: Vec<Vec<f32>> =
+          tSNE::new(&data
+            .outer_iter()
+            .map(|row| row.to_vec())
+            .sample(&mut rand::rngs::StdRng::seed_from_u64(config.seed), 50_000))
+          .embedding_dim(dim as u8)
+          .apply_opt_mut(tSNE::perplexity, perplexity)
+          .apply_opt_mut(tSNE::epochs, epochs)
+          // INDEPENDENT VARIABLE: cosine distance (*) / manhattan / euclidean
+          .barnes_hut(theta, |a, b| {
+            let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+            let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+            let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+            1.0 - dot / (norm_a * norm_b)
+          })
+          .embedding()
+          .chunks(dim)
+          .map(|i| i.to_vec())
+          .collect();
+
+        ip2vec::save_output(
+          projection,
+          "./tsne.csv",
+          "tsne",
+          Some(vec![subnets, ports, protocols])
+        )?;
+      },
     }
   }
 

@@ -8,7 +8,8 @@ use burn::{config::Config, backend::{libtorch::LibTorchDevice, Autodiff}, optim:
 use clap::Parser;
 
 use ip2vec::{
-  dataset::Ip2VecDataset, interface::{ColumnFeatures, TrainerArgs}, model::Ip2VecConfig, train::{ApplyOption, TrainingConfig}, Tch
+  ApplyOption,
+  dataset::Ip2VecDataset, interface::{ColumnFeatures, TrainerArgs}, model::Ip2VecConfig,  train::TrainingConfig, Tch
 };
 
 static _GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;

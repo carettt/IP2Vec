@@ -19,6 +19,27 @@ pub mod train;
 pub mod interface;
 pub mod loss;
 
+/// Trait for applying an `Option` to a `struct` with builder-like config functions
+pub trait ApplyOption: Sized {
+  /// Apply `val` to `f` if `Some`, otherwise return self unchanged
+  fn apply_opt<T>(self, f: impl FnOnce(Self, T) -> Self, val: Option<T>) -> Self {
+    match val {
+      Some(val) => f(self, val),
+      None => self
+    }
+  }
+
+  /// Same as [apply_opt] using mutable references instead
+  fn apply_opt_mut<T>(&mut self, f: impl FnOnce(&mut Self, T) -> &mut Self, val: Option<T>) -> &mut Self {
+    match val {
+      Some(val) => f(self, val),
+      None => self
+    }
+  }
+}
+
+impl<'a> ApplyOption for bhtsne::tSNE<'a, f32, Vec<f32>> {}
+
 /// Convert [Tensor] to [DenseMatrix]
 //pub fn to_matrix<B: Backend, const D: usize>(tensor: Tensor<B, D>) -> Result<DenseMatrix<f32>> {
 //  let dims = tensor.dims();

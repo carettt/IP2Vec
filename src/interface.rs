@@ -54,6 +54,21 @@ pub enum Reduction {
     /// Whether to save PCA model fitting to file
     #[arg(long, conflicts_with="load_fit")]
     save_fit: bool
+  },
+  /// Barnes-Hut t-SNE reduction
+  Tsne {
+    /// Amount of dimensions to reduce to
+    dim: usize,
+    /// Barnes-Hut parameter
+    #[arg(long)]
+    theta: f32,
+
+    /// Effective number of nearest neighbors
+    #[arg(long)]
+    perplexity: Option<f32>,
+    /// Number of fitting iterations
+    #[arg(long)]
+    epochs: Option<usize>,
   }
 }
 
