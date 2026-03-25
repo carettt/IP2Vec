@@ -1,37 +1,41 @@
-//! Module containing [Ip2Vec] model struct, including input projection and 
+//! Module containing [Ip2Vec] model struct, including input projection and
 //! hidden layer (which will be extracted for embeddings). The model should be
 //! constructed with [Ip2VecConfig] which provides default embed dimension params.
 
-use crate::{
-  dataset::batch::ContextBatch, loss::NegEmbeddingLossConfig, train::EmbeddingOutput
-};
+use crate::{dataset::batch::ContextBatch, loss::NegEmbeddingLossConfig, train::EmbeddingOutput};
 
 use burn::{
-  backend::libtorch::LibTorchDevice, prelude::*, tensor::{backend::AutodiffBackend, linalg::{vector_normalize, Norm, DEFAULT_EPSILON}, Transaction}, train::{TrainOutput, TrainStep, ValidStep}
+  backend::libtorch::LibTorchDevice,
+  prelude::*,
+  tensor::{
+    Transaction,
+    backend::AutodiffBackend,
+    linalg::{DEFAULT_EPSILON, Norm, vector_normalize},
+  },
+  train::{TrainOutput, TrainStep, ValidStep},
 };
 
 /// [Ip2Vec] builder with default settings of 100-d `src_ip`, and 25-d `dst_port`
 /// and `protocol` projection layers; totaling to a 150-d embedding tensor.
 #[derive(Config, Debug)]
 pub struct Ip2VecConfig {
-  #[config(default="128")]
+  #[config(default = "128")]
   src_ip_embed_dim: usize,
-  #[config(default="32")]
+  #[config(default = "32")]
   dst_port_embed_dim: usize,
-  #[config(default="4")]
+  #[config(default = "4")]
   protocol_embed_dim: usize,
 
-  #[config(default="256")]
+  #[config(default = "256")]
   fusion_dim: usize,
-  #[config(default="128")]
-  compression_dim: usize
+  #[config(default = "128")]
+  compression_dim: usize,
 }
 
 impl Ip2VecConfig {
   /// [Ip2Vec] initializer, can be overriden using `with_<CONFIG>` builder functions.
   pub fn init<B: Backend>(&self, device: &B::Device) -> Ip2Vec<B> {
-    let combined_dim =
-      self.src_ip_embed_dim + self.dst_port_embed_dim + self.protocol_embed_dim;
+    let combined_dim = self.src_ip_embed_dim + self.dst_port_embed_dim + self.protocol_embed_dim;
 
     Ip2Vec {
       activation: nn::Gelu::new(),
@@ -42,7 +46,7 @@ impl Ip2VecConfig {
 
       fusion: nn::LinearConfig::new(combined_dim, self.fusion_dim).init(device),
 
-      compression: nn::LinearConfig::new(self.fusion_dim, self.compression_dim).init(device)
+      compression: nn::LinearConfig::new(self.fusion_dim, self.compression_dim).init(device),
     }
   }
 }
@@ -58,36 +62,34 @@ pub struct Ip2Vec<B: Backend> {
   protocol_input: nn::Embedding<B>,
 
   fusion: nn::Linear<B>,
-  
+
   compression: nn::Linear<B>,
 }
 
 impl<B: Backend> Ip2Vec<B> {
   /// Embed tensor of shape [batch_size, 34] to tensor of shape [batch_size, 150]
-  pub fn embed(
-    &self,
-    input: Tensor<B, 2>,
-  ) -> Tensor<B, 2> {
+  pub fn embed(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
     let src_ip = input.clone().slice(s![.., 0..32]);
     let dst_port = (input.clone().slice(s![.., 32]) * 65535.0).int();
     let protocol = (input.clone().slice(s![.., 33]) * 255.0).int();
 
-    let src_ip_proj = self.activation.forward(
-      self.src_ip_input.forward(src_ip));
-    let dst_port_proj = self.activation.forward(
-      self.dst_port_input.forward(dst_port).squeeze());
-    let protocol_proj = self.activation.forward(
-      self.protocol_input.forward(protocol).squeeze());
+    let src_ip_proj = self.activation.forward(self.src_ip_input.forward(src_ip));
+    let dst_port_proj = self
+      .activation
+      .forward(self.dst_port_input.forward(dst_port).squeeze());
+    let protocol_proj = self
+      .activation
+      .forward(self.protocol_input.forward(protocol).squeeze());
 
     let combined = Tensor::cat(vec![src_ip_proj, dst_port_proj, protocol_proj], 1);
 
     let fused = self.activation.forward(self.fusion.forward(combined));
-    
+
     vector_normalize(
       self.compression.forward(fused),
       Norm::L2,
       1,
-      DEFAULT_EPSILON
+      DEFAULT_EPSILON,
     )
   }
 
@@ -96,7 +98,7 @@ impl<B: Backend> Ip2Vec<B> {
     &self,
     targets: Tensor<B, 2>,
     positive_context: Tensor<B, 3>,
-    negative_context: Tensor<B, 3>
+    negative_context: Tensor<B, 3>,
   ) -> EmbeddingOutput<B> {
     let [batch_size, pos_context_num, feat_dim] = positive_context.dims();
     let [_, neg_context_num, _] = negative_context.dims();
@@ -104,28 +106,26 @@ impl<B: Backend> Ip2Vec<B> {
     let embeddings = self.embed(targets.clone()); // [batch_size, 150]
     let embedding_dim = embeddings.dims()[1];
 
-    let pos_context_embeddings = self.embed(positive_context
-      .reshape([batch_size * pos_context_num, feat_dim]))
+    let pos_context_embeddings = self
+      .embed(positive_context.reshape([batch_size * pos_context_num, feat_dim]))
       .reshape([batch_size, pos_context_num, embedding_dim]);
-    let neg_context_embeddings = self.embed(negative_context
-      .reshape([batch_size * neg_context_num, feat_dim]))
+    let neg_context_embeddings = self
+      .embed(negative_context.reshape([batch_size * neg_context_num, feat_dim]))
       .reshape([batch_size, neg_context_num, embedding_dim]);
 
-    let loss = NegEmbeddingLossConfig::new()
-      .init()
-      .forward(
-        embeddings.clone(),
-        pos_context_embeddings,
-        neg_context_embeddings
-      );
+    let loss = NegEmbeddingLossConfig::new().init().forward(
+      embeddings.clone(),
+      pos_context_embeddings,
+      neg_context_embeddings,
+    );
 
     EmbeddingOutput::new(embeddings, loss)
   }
 }
 
-impl<B> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B> 
-where 
-  B: AutodiffBackend<Device = LibTorchDevice>
+impl<B> TrainStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B>
+where
+  B: AutodiffBackend<Device = LibTorchDevice>,
 {
   fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
     let gpu_device = LibTorchDevice::Cuda(0);
@@ -148,9 +148,9 @@ where
   }
 }
 
-impl <B> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B>
-where 
-  B: Backend<Device = LibTorchDevice>
+impl<B> ValidStep<ContextBatch<B>, EmbeddingOutput<B>> for Ip2Vec<B>
+where
+  B: Backend<Device = LibTorchDevice>,
 {
   fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
     let gpu_device = LibTorchDevice::Cuda(0);
@@ -174,10 +174,10 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{dataset::Ip2VecDataset, Tch};
+  use crate::{Tch, dataset::Ip2VecDataset};
 
-  use proptest::prelude::*;
   use burn::backend::libtorch::LibTorchDevice;
+  use proptest::prelude::*;
 
   proptest! {
     #[test]

@@ -1,10 +1,7 @@
-//! Submodule containing batching functionalities accessible through the 
+//! Submodule containing batching functionalities accessible through the
 //! [ContextBatcher] struct, which yields [ContextBatch]es.
 
-use burn::{
-  prelude::*,
-  data::dataloader::batcher::Batcher,
-};
+use burn::{data::dataloader::batcher::Batcher, prelude::*};
 
 use crate::dataset::ContextItem;
 
@@ -16,7 +13,7 @@ pub struct ContextBatch<B: Backend> {
   /// 3D tensor of shape [batch_size, context_window, 34]
   pub positive_context: Tensor<B, 3>,
   /// 3D tensor of shape [batch_size, context_window * neg_multiplier, 34]
-  pub negative_context: Tensor<B, 3>
+  pub negative_context: Tensor<B, 3>,
 }
 
 impl<B: Backend> ContextBatch<B> {
@@ -24,9 +21,13 @@ impl<B: Backend> ContextBatch<B> {
   fn new(
     samples: Tensor<B, 2>,
     positive_context: Tensor<B, 3>,
-    negative_context: Tensor<B, 3>
+    negative_context: Tensor<B, 3>,
   ) -> Self {
-    Self { samples, positive_context, negative_context }
+    Self {
+      samples,
+      positive_context,
+      negative_context,
+    }
   }
 }
 
@@ -50,10 +51,8 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
       // Update batch
       sample_buffer.extend(sample);
 
-      pos_context_buffer.extend(item.context.positive.iter()
-        .flat_map(|c| c.encode()));
-      neg_context_buffer.extend(item.context.negative.iter()
-        .flat_map(|c| c.encode()));
+      pos_context_buffer.extend(item.context.positive.iter().flat_map(|c| c.encode()));
+      neg_context_buffer.extend(item.context.negative.iter().flat_map(|c| c.encode()));
     }
 
     let encoded_dim = sample_buffer.len() / batch_size;
@@ -63,14 +62,11 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
     let neg_context_dims = [batch_size, negative_count, encoded_dim];
 
     let samples =
-      Tensor::<B, 1>::from_floats(sample_buffer.as_slice(), device)
-        .reshape(sample_dims);
+      Tensor::<B, 1>::from_floats(sample_buffer.as_slice(), device).reshape(sample_dims);
     let positive_context =
-      Tensor::<B, 1>::from_floats(pos_context_buffer.as_slice(), device)
-        .reshape(pos_context_dims);
+      Tensor::<B, 1>::from_floats(pos_context_buffer.as_slice(), device).reshape(pos_context_dims);
     let negative_context =
-      Tensor::<B, 1>::from_floats(neg_context_buffer.as_slice(), device)
-        .reshape(neg_context_dims);
+      Tensor::<B, 1>::from_floats(neg_context_buffer.as_slice(), device).reshape(neg_context_dims);
 
     ContextBatch::new(samples, positive_context, negative_context)
   }
@@ -79,16 +75,12 @@ impl<B: Backend> Batcher<B, ContextItem, ContextBatch<B>> for ContextBatcher {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::dataset::{
-    Ip2VecDataset
-  };
+  use crate::dataset::Ip2VecDataset;
 
-  use proptest::prelude::*;
   use burn::{
-    backend::libtorch::LibTorchDevice,
-    data::dataset::Dataset,
-    data::dataloader::batcher::Batcher,
+    backend::libtorch::LibTorchDevice, data::dataloader::batcher::Batcher, data::dataset::Dataset,
   };
+  use proptest::prelude::*;
 
   proptest! {
     #[test]
@@ -115,7 +107,7 @@ mod tests {
         let batch_end = (batch_start + batch_size)
           + if i < remainder {1} else {0};
 
-        let batch_items = 
+        let batch_items =
           (batch_start..batch_end).map(|i| dataset.get(i))
           .collect::<Option<Vec<_>>>()
           .expect("could not get all batch items");
@@ -168,7 +160,7 @@ mod tests {
         let batch_end = (batch_start + batch_size)
           + if i < remainder {1} else {0};
 
-        let batch_items = 
+        let batch_items =
           (batch_start..batch_end).map(|i| dataset.get(i))
           .collect::<Option<Vec<_>>>()
           .expect("could not get all batch items");
@@ -191,4 +183,3 @@ mod tests {
     }
   }
 }
-

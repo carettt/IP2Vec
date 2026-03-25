@@ -1,19 +1,21 @@
 //! Module containing [Dataset] struct and associated functions for manipulating
 //! and using the dataset. Currently, only CSV is supported.
 
-use std::{
-  collections::{HashMap, HashSet}, net::Ipv4Addr, sync::Arc
-};
 use rand::{Rng, RngExt};
-
-use derivative::*;
-use anyhow::{bail, anyhow, Context, Result};
-use burn::{
-  data::dataset::Dataset, prelude::Backend, Tensor
+use std::{
+  collections::{HashMap, HashSet},
+  net::Ipv4Addr,
+  sync::Arc,
 };
 
-#[cfg(test)] use proptest_derive::Arbitrary;
-#[cfg(test)] use proptest::prelude::*;
+use anyhow::{Context, Result, anyhow, bail};
+use burn::{Tensor, data::dataset::Dataset, prelude::Backend};
+use derivative::*;
+
+#[cfg(test)]
+use proptest::prelude::*;
+#[cfg(test)]
+use proptest_derive::Arbitrary;
 
 use crate::interface::ColumnFeatures;
 
@@ -24,7 +26,7 @@ enum FieldKind {
   SrcIp,
   DstIp,
   DstPort,
-  Protocol
+  Protocol,
 }
 
 /// Abstract Struct containing contextual information about an IP from a flow
@@ -46,15 +48,15 @@ impl Sample {
   /// Helper to create new [Sample] from data
   pub fn new(
     src_ip: Arc<Ipv4Addr>,
-		dst_ip: Arc<Ipv4Addr>,
-		dst_port: Arc<u16>,
-		protocol: Arc<u8>,
+    dst_ip: Arc<Ipv4Addr>,
+    dst_port: Arc<u16>,
+    protocol: Arc<u8>,
   ) -> Self {
     Self {
       src_ip,
       dst_ip,
       dst_port,
-      protocol
+      protocol,
     }
   }
 
@@ -95,7 +97,7 @@ impl Sample {
 #[derive(Clone, Debug)]
 pub struct ContextItem {
   target: Arc<Sample>,
-  context: SampleContext
+  context: SampleContext,
 }
 
 impl PartialEq for ContextItem {
@@ -119,10 +121,10 @@ pub struct Ip2VecDataset {
   pub samples: Vec<Arc<Sample>>, // [n]
 
   hosts: HashSet<Arc<Ipv4Addr>>, // [n]
-  ports: HashSet<Arc<u16>>, // [n]
-  protocols: HashSet<Arc<u8>>, // [n]
+  ports: HashSet<Arc<u16>>,      // [n]
+  protocols: HashSet<Arc<u8>>,   // [n]
 
-  contexts: Option<HashMap<Arc<Sample>, SampleContext>> // n*15 per n
+  contexts: Option<HashMap<Arc<Sample>, SampleContext>>, // n*15 per n
 }
 
 impl Ip2VecDataset {
@@ -136,8 +138,8 @@ impl Ip2VecDataset {
       hosts: HashSet::with_capacity(n),
       ports: HashSet::with_capacity(n),
       protocols: HashSet::with_capacity(n),
-      
-      contexts: None
+
+      contexts: None,
     };
 
     for sample_data in data {
@@ -150,10 +152,10 @@ impl Ip2VecDataset {
       let protocol = Arc::new(protocol);
 
       let sample = Arc::new(Sample::new(
-          Arc::clone(&src_ip),
-          Arc::clone(&dst_ip),
-          Arc::clone(&port),
-          Arc::clone(&protocol)
+        Arc::clone(&src_ip),
+        Arc::clone(&dst_ip),
+        Arc::clone(&port),
+        Arc::clone(&protocol),
       ));
 
       // Populate data structures
@@ -169,10 +171,14 @@ impl Ip2VecDataset {
   }
 
   /// Function to derive and populate `contexts`
-  pub fn preprocess<R>(&mut self, rng: &mut R, context_window: usize, neg_multiplier: usize) 
-  -> Result<()>
-  where 
-    R: Rng
+  pub fn preprocess<R>(
+    &mut self,
+    rng: &mut R,
+    context_window: usize,
+    neg_multiplier: usize,
+  ) -> Result<()>
+  where
+    R: Rng,
   {
     // Allocate `HashMap`
     let mut contexts = HashMap::with_capacity(self.samples.len());
@@ -180,14 +186,17 @@ impl Ip2VecDataset {
     // Loop through samples
     for sample in &self.samples.clone() {
       // Take `context_window` positive samples from dataset
-      let positive: HashSet<Arc<Sample>> = self.samples.iter()
+      let positive: HashSet<Arc<Sample>> = self
+        .samples
+        .iter()
         .filter(|other| sample.is_context(other))
         .cloned()
         .take(context_window)
         .collect();
 
       // Randomly sample `context_window * neg_multiplier` negative samples from dataset
-      let mut negative: HashSet<Arc<Sample>> = HashSet::with_capacity(context_window * neg_multiplier);
+      let mut negative: HashSet<Arc<Sample>> =
+        HashSet::with_capacity(context_window * neg_multiplier);
 
       while negative.len() != (context_window * neg_multiplier) {
         let i = rng.random_range(0..self.samples.len());
@@ -206,8 +215,13 @@ impl Ip2VecDataset {
 
       if positive.len() != context_window || negative.len() != (context_window * neg_multiplier) {
         // Prune samples with not enough context
-        self.samples.swap_remove(self.samples.iter().position(|s| s == sample)
-            .context("could not prune sample with insufficient context")?);
+        self.samples.swap_remove(
+          self
+            .samples
+            .iter()
+            .position(|s| s == sample)
+            .context("could not prune sample with insufficient context")?,
+        );
       } else {
         // Populate contexts
         contexts.insert(Arc::clone(sample), SampleContext { positive, negative });
@@ -224,10 +238,12 @@ impl Ip2VecDataset {
   }
 
   /// Deserialize dataset from CSV `reader` with column names `features`
-  pub fn deserialize<R>(reader: &mut csv::Reader<R>, features: ColumnFeatures)
-  -> Result<Ip2VecDataset>
-  where 
-    R: std::io::Read
+  pub fn deserialize<R>(
+    reader: &mut csv::Reader<R>,
+    features: ColumnFeatures,
+  ) -> Result<Ip2VecDataset>
+  where
+    R: std::io::Read,
   {
     // Construct map of column name to [FieldKind] enum
     let mut field_map: HashMap<String, FieldKind> = HashMap::new();
@@ -312,17 +328,20 @@ impl Ip2VecDataset {
     let mut protocols = Vec::with_capacity(dataset_size);
 
     for sample in &self.samples {
-      let subnet = sample.src_ip.octets().into_iter()
+      let subnet = sample
+        .src_ip
+        .octets()
+        .into_iter()
         .take(3)
         .map(|i| i.to_string())
         .collect::<Vec<_>>()
         .join(".");
-      
+
       subnets.push(format!("{subnet}.0/24"));
       ports.push(sample.dst_port.to_string());
       protocols.push(sample.protocol.to_string());
     }
-    
+
     [subnets, ports, protocols]
   }
 }
@@ -334,7 +353,7 @@ impl Dataset<ContextItem> for Ip2VecDataset {
 
     Some(ContextItem {
       target: Arc::clone(target),
-      context
+      context,
     })
   }
 
@@ -349,12 +368,15 @@ impl Arbitrary for Ip2VecDataset {
   type Strategy = BoxedStrategy<Self>;
 
   fn arbitrary_with(preprocessing: Self::Parameters) -> Self::Strategy {
-    prop::collection::vec((
-      any::<Ipv4Addr>(),
-      any::<Ipv4Addr>(),
-      any::<u16>(),
-      any::<u8>()
-    ), 100..500)
+    prop::collection::vec(
+      (
+        any::<Ipv4Addr>(),
+        any::<Ipv4Addr>(),
+        any::<u16>(),
+        any::<u8>(),
+      ),
+      100..500,
+    )
     .prop_filter_map("failed to generate dataset", move |vec| {
       let mut dataset = Ip2VecDataset::new(vec);
 
@@ -390,11 +412,14 @@ mod tests {
         (0u8..=255, 0u8..=255, 0u8..=255, 0u8..=255) // dst_ip
           .prop_map(|(a, b, c, d)| format!("{a}.{b}.{c}.{d}")),
         0u16..65535, // dst_port
-        0u8..255 // protocol
-      ).prop_map(|(src_ip, dst_ip, dst_port, protocol)|
-          format!("{src_ip},{dst_ip},{dst_port},{protocol}")),
-      0..500 // 500 rows
-    ).prop_map(|rows| {
+        0u8..255,    // protocol
+      )
+        .prop_map(|(src_ip, dst_ip, dst_port, protocol)| {
+          format!("{src_ip},{dst_ip},{dst_port},{protocol}")
+        }),
+      0..500, // 500 rows
+    )
+    .prop_map(|rows| {
       let mut data = "IPV4_SRC_ADDR,IPV4_DST_ADDR,L4_DST_PORT,PROTOCOL\n".to_string();
       for row in rows {
         data.push_str(&row);

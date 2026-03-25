@@ -2,7 +2,7 @@
 
 use std::{net::Ipv4Addr, path::PathBuf};
 
-use clap::{Parser, Args, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 /// ip2vec - IP embedding neural network
@@ -15,7 +15,7 @@ pub struct InferenceArgs {
 
   /// Input subcommand
   #[command(subcommand)]
-  pub command: Commands
+  pub command: Commands,
 }
 
 /// ip2vec-trainer - IP embedding neural network trainer
@@ -35,7 +35,7 @@ pub struct TrainerArgs {
 
   /// Folder path to save configuration and experiment logs
   #[arg(long)]
-  pub store: Option<PathBuf>
+  pub store: Option<PathBuf>,
 }
 
 /// Enum containing dimensionality reduction subcommands
@@ -44,16 +44,16 @@ pub enum Reduction {
   /// Randomized PCA reduction
   Pca {
     /// Amount of dimensions to reduce to
-    #[arg(conflicts_with="load_fit")]
+    #[arg(conflicts_with = "load_fit")]
     dim: Option<usize>,
 
     /// Whether to load PCA model fitting from file
-    #[arg(long, conflicts_with="save_fit")]
+    #[arg(long, conflicts_with = "save_fit")]
     load_fit: bool,
 
     /// Whether to save PCA model fitting to file
-    #[arg(long, conflicts_with="load_fit")]
-    save_fit: bool
+    #[arg(long, conflicts_with = "load_fit")]
+    save_fit: bool,
   },
   /// Barnes-Hut t-SNE reduction
   Tsne {
@@ -69,7 +69,7 @@ pub enum Reduction {
     /// Number of fitting iterations
     #[arg(long)]
     epochs: Option<usize>,
-  }
+  },
 }
 
 /// Enum containing inference subcommands
@@ -83,7 +83,7 @@ pub enum Commands {
 
     /// Reduction selection subcommand
     #[command(subcommand)]
-    reduction: Option<Reduction>
+    reduction: Option<Reduction>,
   },
 
   /// File batch inference
@@ -93,15 +93,15 @@ pub enum Commands {
 
     /// Reduction selection subcommand
     #[command(subcommand)]
-    reduction: Option<Reduction>
-  }
+    reduction: Option<Reduction>,
+  },
 }
 
 impl Commands {
   /// Extract nested reduction subcommand
   pub fn get_reduction(&self) -> Option<Reduction> {
     match self {
-      Self::Single { reduction, ..} => reduction.clone(),
+      Self::Single { reduction, .. } => reduction.clone(),
       Self::Batch { reduction, .. } => reduction.clone(),
     }
   }
@@ -121,24 +121,29 @@ pub struct DataFeatures {
   pub dst_port: u16,
   /// Protocol
   #[arg(long)]
-  pub protocol: u8
+  pub protocol: u8,
 }
 
 /// Struct to contain dataset feature column names
 #[derive(Args, Debug, Clone, Serialize, Deserialize)]
-#[group(requires="src_ip", requires="dst_ip", requires="dst_port", requires="protocol")]
+#[group(
+  requires = "src_ip",
+  requires = "dst_ip",
+  requires = "dst_port",
+  requires = "protocol"
+)]
 pub struct ColumnFeatures {
   /// Column name for source IP
-  #[arg(long, required=false)]
+  #[arg(long, required = false)]
   pub src_ip: String,
   /// Column name for destination IP
-  #[arg(long, required=false)]
+  #[arg(long, required = false)]
   pub dst_ip: String,
   /// Column name for destination port
-  #[arg(long, required=false)]
+  #[arg(long, required = false)]
   pub dst_port: String,
   /// Column name for protocol
-  #[arg(long, required=false)]
+  #[arg(long, required = false)]
   pub protocol: String,
 }
 
@@ -152,7 +157,7 @@ pub struct TrainingParams {
   #[arg(short, long)]
   pub epochs: Option<usize>,
   /// Percentage of dataset to use for training vs. validation
-  #[arg(short='r', long="ratio")]
+  #[arg(short = 'r', long = "ratio")]
   pub split_ratio: Option<f64>,
   /// Batch size
   #[arg(short, long)]
@@ -169,5 +174,5 @@ pub struct TrainingParams {
   pub context_window: Option<usize>,
   /// Amount of negative context examples per postive context
   #[arg(short, long)]
-  pub neg_multiplier: Option<usize>
+  pub neg_multiplier: Option<usize>,
 }

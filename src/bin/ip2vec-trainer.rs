@@ -4,12 +4,19 @@ use rand::SeedableRng;
 
 use anyhow::{Context, Result};
 
-use burn::{config::Config, backend::{libtorch::LibTorchDevice, Autodiff}, optim::SgdConfig};
+use burn::{
+  backend::{Autodiff, libtorch::LibTorchDevice},
+  config::Config,
+  optim::SgdConfig,
+};
 use clap::Parser;
 
 use ip2vec::{
-  ApplyOption,
-  dataset::Ip2VecDataset, interface::{ColumnFeatures, TrainerArgs}, model::Ip2VecConfig,  train::TrainingConfig, Tch
+  ApplyOption, Tch,
+  dataset::Ip2VecDataset,
+  interface::{ColumnFeatures, TrainerArgs},
+  model::Ip2VecConfig,
+  train::TrainingConfig,
 };
 
 static _GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -49,9 +56,11 @@ fn main() -> Result<()> {
     }
   } else {
     // Otherwise, dataset and features should both be available
-    dataset = args.dataset
+    dataset = args
+      .dataset
       .context("should have either store or positional dataset argument")?;
-    features = args.features
+    features = args
+      .features
       .context("should have either store or dataset feature column name arguments")?;
 
     // Initialize new trainer
@@ -59,7 +68,7 @@ fn main() -> Result<()> {
       dataset.clone(),
       features.clone(),
       Ip2VecConfig::new(),
-      SgdConfig::new()
+      SgdConfig::new(),
     );
   }
 
@@ -71,20 +80,30 @@ fn main() -> Result<()> {
     .apply_opt(TrainingConfig::with_split_ratio, args.params.split_ratio)
     .apply_opt(TrainingConfig::with_batch_size, args.params.batch_size)
     .apply_opt(TrainingConfig::with_threads, args.params.threads)
-    .apply_opt(TrainingConfig::with_learning_rate, args.params.learning_rate)
-    .apply_opt(TrainingConfig::with_context_window, args.params.context_window)
-    .apply_opt(TrainingConfig::with_neg_multiplier, args.params.neg_multiplier);
+    .apply_opt(
+      TrainingConfig::with_learning_rate,
+      args.params.learning_rate,
+    )
+    .apply_opt(
+      TrainingConfig::with_context_window,
+      args.params.context_window,
+    )
+    .apply_opt(
+      TrainingConfig::with_neg_multiplier,
+      args.params.neg_multiplier,
+    );
 
   // Import dataset with dynamic feature names
   let mut rng = rand::rngs::StdRng::seed_from_u64(trainer.seed);
 
   let mut reader = csv::Reader::from_path(&dataset)?;
-  let mut dataset = Ip2VecDataset::deserialize(&mut reader, features)
-    .context("failed to deserialize dataset")?;
+  let mut dataset =
+    Ip2VecDataset::deserialize(&mut reader, features).context("failed to deserialize dataset")?;
   dataset.preprocess(&mut rng, trainer.context_window, trainer.neg_multiplier)?;
 
   // Initialize trainer
-  trainer.init::<Tch>(&device)
+  trainer
+    .init::<Tch>(&device)
     .context("failed to initialize trainer")?;
 
   // Train model

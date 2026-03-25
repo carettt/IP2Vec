@@ -1,14 +1,19 @@
 //! Module containing logic for implementation of NEG loss from the Word2Vec
 //! paper (Mikolov et al., 2013)
 
-use burn::{config::Config, module::{Content, DisplaySettings, Ignored, Module, ModuleDisplay}, nn::loss::Reduction, tensor::{activation::log_sigmoid, backend::Backend, Tensor}};
+use burn::{
+  config::Config,
+  module::{Content, DisplaySettings, Ignored, Module, ModuleDisplay},
+  nn::loss::Reduction,
+  tensor::{Tensor, activation::log_sigmoid, backend::Backend},
+};
 
 /// Configuration for [NegEmbeddingLoss]
 #[derive(Config, Debug)]
 pub struct NegEmbeddingLossConfig {
   /// Specifies the reduction to be applied to the output tensor
   #[config(default = "Reduction::Mean")]
-  pub reduction: Reduction
+  pub reduction: Reduction,
 }
 
 impl NegEmbeddingLossConfig {
@@ -23,7 +28,7 @@ impl NegEmbeddingLossConfig {
 #[module(custom_display)]
 pub struct NegEmbeddingLoss {
   /// Reduction technique applied to loss tensor
-  pub reduction: Ignored<Reduction>
+  pub reduction: Ignored<Reduction>,
 }
 
 impl ModuleDisplay for NegEmbeddingLoss {
@@ -42,7 +47,9 @@ impl ModuleDisplay for NegEmbeddingLoss {
 
 impl NegEmbeddingLoss {
   fn new(reduction: Reduction) -> Self {
-    NegEmbeddingLoss { reduction: Ignored(reduction) }
+    NegEmbeddingLoss {
+      reduction: Ignored(reduction),
+    }
   }
 
   /// Calculate loss without any Reduction, returns tensor of shape [batch_size]
@@ -50,11 +57,12 @@ impl NegEmbeddingLoss {
     &self,
     target: Tensor<B, 2>,
     positive: Tensor<B, 3>,
-    negative: Tensor<B, 3>
+    negative: Tensor<B, 3>,
   ) -> Tensor<B, 1> {
     let unsqueezed_target = target.unsqueeze_dim(1);
 
-    let positive_similarity: Tensor<B, 1> = unsqueezed_target.clone()
+    let positive_similarity: Tensor<B, 1> = unsqueezed_target
+      .clone()
       .matmul(positive.swap_dims(1, 2)) // [batch_size, 1, context_window]
       .squeeze_dim::<2>(1) // [batch_size, context_window]
       .sum_dim(1) // [batch_size, 1]
@@ -73,7 +81,7 @@ impl NegEmbeddingLoss {
     &self,
     target: Tensor<B, 2>,
     positive: Tensor<B, 3>,
-    negative: Tensor<B, 3>
+    negative: Tensor<B, 3>,
   ) -> Tensor<B, 1> {
     let loss = self.forward_no_reduction(target, positive, negative);
 
@@ -93,26 +101,16 @@ mod tests {
 
   use proptest::prelude::*;
 
-  fn input_strategy<B: Backend>(device: &B::Device) -> impl Strategy<Value = (Tensor<B, 2>, Tensor<B, 3>, Tensor<B, 3>)> {
+  fn input_strategy<B: Backend>(
+    device: &B::Device,
+  ) -> impl Strategy<Value = (Tensor<B, 2>, Tensor<B, 3>, Tensor<B, 3>)> {
     (
-      prop::collection::vec(
-        0f64..=1.0, 150 * 4
-      ).prop_map(|data| {
-        Tensor::<B, 1>::from_data(data.as_slice(), device)
-          .reshape([4, 150])
-      }),
-      prop::collection::vec(
-        0f64..=1.0, 150 * 5 * 4
-      ).prop_map(|data| {
-        Tensor::<B, 1>::from_data(data.as_slice(), device)
-          .reshape([4, 5, 150])
-      }),
-      prop::collection::vec(
-        0f64..=1.0, 150 * 25 * 4
-      ).prop_map(|data| {
-        Tensor::<B, 1>::from_data(data.as_slice(), device)
-          .reshape([4, 25, 150])
-      }),
+      prop::collection::vec(0f64..=1.0, 150 * 4)
+        .prop_map(|data| Tensor::<B, 1>::from_data(data.as_slice(), device).reshape([4, 150])),
+      prop::collection::vec(0f64..=1.0, 150 * 5 * 4)
+        .prop_map(|data| Tensor::<B, 1>::from_data(data.as_slice(), device).reshape([4, 5, 150])),
+      prop::collection::vec(0f64..=1.0, 150 * 25 * 4)
+        .prop_map(|data| Tensor::<B, 1>::from_data(data.as_slice(), device).reshape([4, 25, 150])),
     )
   }
 

@@ -2,15 +2,30 @@
 
 use std::{path::PathBuf, sync::LazyLock};
 
-use crate::{dataset::{batch::ContextBatcher, ContextItem, Ip2VecDataset}, interface::ColumnFeatures, model::Ip2VecConfig, Tch};
 use crate::ApplyOption;
-
-use burn::{
-  backend::libtorch::LibTorchDevice, data::{dataloader::DataLoaderBuilder, dataset::{transform::PartialDataset, Dataset}}, optim::SgdConfig, prelude::*, record::DefaultRecorder, tensor::{backend::AutodiffBackend, Transaction}, train::{metric::{
-    Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric
-  }, LearnerBuilder, LearningStrategy}
+use crate::{
+  Tch,
+  dataset::{ContextItem, Ip2VecDataset, batch::ContextBatcher},
+  interface::ColumnFeatures,
+  model::Ip2VecConfig,
 };
+
 use anyhow::Result;
+use burn::{
+  backend::libtorch::LibTorchDevice,
+  data::{
+    dataloader::DataLoaderBuilder,
+    dataset::{Dataset, transform::PartialDataset},
+  },
+  optim::SgdConfig,
+  prelude::*,
+  record::DefaultRecorder,
+  tensor::{Transaction, backend::AutodiffBackend},
+  train::{
+    LearnerBuilder, LearningStrategy,
+    metric::{Adaptor, CpuUse, CudaMetric, ItemLazy, LossInput, LossMetric},
+  },
+};
 
 static SYNC_DEVICE: LazyLock<LibTorchDevice> = LazyLock::new(|| {
   if std::env::var("IP2VEC_DUAL_GPU").is_ok() {
@@ -26,7 +41,7 @@ static SYNC_DEVICE: LazyLock<LibTorchDevice> = LazyLock::new(|| {
 pub struct TrainingConfig {
   #[config(default = "PathBuf::from(\"./model\")")]
   artifact_path: PathBuf,
-  
+
   /// Path to training dataset CSV file
   pub dataset_path: PathBuf,
   /// Names of feature columns in dataset CSV file
@@ -49,13 +64,13 @@ pub struct TrainingConfig {
   threads: usize,
   #[config(default = 1.0e-4)]
   learning_rate: f64,
-  
+
   /// Amount of positive context
   #[config(default = 5)]
   pub context_window: usize,
   /// Amount of negative context per positive context
   #[config(default = 5)]
-  pub neg_multiplier: usize
+  pub neg_multiplier: usize,
 }
 
 impl ApplyOption for TrainingConfig {}
@@ -64,8 +79,8 @@ impl TrainingConfig {
   /// Clear previous training data from `artifact_path` and seed RNG
   pub fn init<B: Backend>(&self, device: &B::Device) -> Result<()> {
     match std::fs::remove_dir_all(&self.artifact_path) {
-      Ok(_) => {},
-      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+      Ok(_) => {}
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
       Err(e) => return Err(e.into()),
     };
 
@@ -81,8 +96,13 @@ impl TrainingConfig {
     Ok(())
   }
 
-  fn split_dataset<B, D>(&self, dataset: D)
-  -> (PartialDataset<D, ContextItem>, PartialDataset<D, ContextItem>)
+  fn split_dataset<B, D>(
+    &self,
+    dataset: D,
+  ) -> (
+    PartialDataset<D, ContextItem>,
+    PartialDataset<D, ContextItem>,
+  )
   where
     B: Backend,
     D: Dataset<ContextItem> + Clone,
@@ -90,18 +110,16 @@ impl TrainingConfig {
     let len = dataset.clone().len();
     let split_idx = (len as f64 * self.split_ratio).round() as usize;
 
-    let train: PartialDataset<D, ContextItem> =
-      PartialDataset::new(dataset.clone(), 0, split_idx);
+    let train: PartialDataset<D, ContextItem> = PartialDataset::new(dataset.clone(), 0, split_idx);
 
-    let test: PartialDataset<D, ContextItem> =
-      PartialDataset::new(dataset, split_idx, len);
+    let test: PartialDataset<D, ContextItem> = PartialDataset::new(dataset, split_idx, len);
 
     (train, test)
   }
 
   /// Train model using parameters configured with [TrainingConfig]
   pub fn train<B>(&self, dataset: Ip2VecDataset, device: &B::Device)
-  where 
+  where
     B: AutodiffBackend<Device = LibTorchDevice>,
   {
     // Initialize dataset & dataloaders w/ batcher
@@ -110,21 +128,19 @@ impl TrainingConfig {
     let batcher = ContextBatcher::default();
     let cpu_device = LibTorchDevice::Cpu;
 
-    let dataloader_train =
-      DataLoaderBuilder::new(batcher.clone())
-        .batch_size(self.batch_size)
-        .shuffle(self.seed)
-        .num_workers(self.threads)
-        .set_device(cpu_device)
-        .build(train);
+    let dataloader_train = DataLoaderBuilder::new(batcher.clone())
+      .batch_size(self.batch_size)
+      .shuffle(self.seed)
+      .num_workers(self.threads)
+      .set_device(cpu_device)
+      .build(train);
 
-    let dataloader_test =
-      DataLoaderBuilder::new(batcher.clone())
-        .batch_size(self.batch_size)
-        .shuffle(self.seed)
-        .num_workers(self.threads)
-        .set_device(cpu_device)
-        .build(test);
+    let dataloader_test = DataLoaderBuilder::new(batcher.clone())
+      .batch_size(self.batch_size)
+      .shuffle(self.seed)
+      .num_workers(self.threads)
+      .set_device(cpu_device)
+      .build(test);
 
     // Initialize learner with metrics
     let learner = LearnerBuilder::new(&self.artifact_path)
@@ -141,14 +157,15 @@ impl TrainingConfig {
       .build(
         self.model.init::<B>(&device),
         self.optimizer.init(),
-        self.learning_rate
+        self.learning_rate,
       );
 
     let mut save_path = self.artifact_path.clone();
     save_path.push("model.mpk");
 
     // Fit model and save
-    learner.fit(dataloader_train, dataloader_test)
+    learner
+      .fit(dataloader_train, dataloader_test)
       .model
       .save_file(&save_path, &DefaultRecorder::new())
       .expect("could not fit model");
@@ -161,12 +178,12 @@ pub struct EmbeddingOutput<B: Backend> {
   pub embeddings: Tensor<B, 2>,
 
   /// Loss of shape [batch_size]
-  pub loss: Tensor<B, 1>
+  pub loss: Tensor<B, 1>,
 }
 
 impl<B: Backend> EmbeddingOutput<B> {
   /// Create new [EmbeddingOutput] from tensors
-  pub fn new(embeddings: Tensor<B, 2>, loss: Tensor<B, 1>) -> Self{
+  pub fn new(embeddings: Tensor<B, 2>, loss: Tensor<B, 1>) -> Self {
     Self { embeddings, loss }
   }
 }
@@ -204,7 +221,7 @@ impl<B: Backend> ItemLazy for EmbeddingOutput<B> {
 
     EmbeddingOutput {
       embeddings: Tensor::from_data(embeddings, device),
-      loss: Tensor::from_data(loss, device)
+      loss: Tensor::from_data(loss, device),
     }
   }
 }
