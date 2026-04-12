@@ -61,8 +61,22 @@ pub fn to_array2<B: Backend>(tensor: &Tensor<B, 2>) -> Result<Array2<f32>> {
   Ok(Array2::from_shape_vec((n_rows, n_cols), vec)?)
 }
 
-/// Save output matrix to CSV file
-pub fn save_output(
+/// Save embedding `Tensor` to CSV file
+pub fn save_embeddings<B: Backend>(data: &Tensor<B, 2>, output_path: &str) -> Result<()> {
+  let arr = to_array2(data)?;
+  let mut writer = csv::Writer::from_path(output_path)?;
+
+  for row in arr.rows() {
+    let record: Vec<String> = row.iter().map(|v| v.to_string()).collect();
+    writer.write_record(record)?;
+  }
+
+  writer.flush()?;
+  Ok(())
+}
+
+/// Save projection output matrix to CSV file
+pub fn save_projection(
   data: Vec<Vec<f32>>,
   output_path: &str,
   prefix: &str,

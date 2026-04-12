@@ -11,7 +11,7 @@ use ip2vec::{
   ApplyOption, Tch,
   dataset::{Ip2VecDataset, Sample},
   interface::{Commands, InferenceArgs, Reduction},
-  to_array2,
+  save_embeddings, to_array2,
   train::TrainingConfig,
 };
 use petal_decomposition::{RandomizedPca, RandomizedPcaBuilder};
@@ -79,7 +79,8 @@ fn main() -> Result<()> {
   let model = config.model.init::<Tch>(&device).load_record(instance);
 
   let embedding = model.embed(input_tensor);
-  println!("{}", embedding);
+
+  save_embeddings(&embedding, "./embeddings.csv")?;
 
   if let Some(reduction) = reduction {
     let mut pca: RandomizedPca<f32, _>;
@@ -123,7 +124,7 @@ fn main() -> Result<()> {
             .collect::<String>()
         );
 
-        ip2vec::save_output(
+        ip2vec::save_projection(
           projection.outer_iter().map(|row| row.to_vec()).collect(),
           "./pca.csv",
           "pc",
@@ -182,7 +183,7 @@ fn main() -> Result<()> {
         .map(|i| i.to_vec())
         .collect();
 
-        ip2vec::save_output(
+        ip2vec::save_projection(
           projection,
           "./tsne.csv",
           "tsne",
