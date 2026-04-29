@@ -55,15 +55,18 @@ pub struct TrainingConfig {
   #[config(default = 1)]
   pub seed: u64,
   #[config(default = 10)]
-  epochs: usize,
-  #[config(default = 0.6)]
+  /// Training epochs
+  pub epochs: usize,
+  #[config(default = 0.8)]
   split_ratio: f64,
+  /// Batch size
   #[config(default = 64)]
-  batch_size: usize,
+  pub batch_size: usize,
   #[config(default = 8)]
   threads: usize,
+  /// Learning rate for gradient updates
   #[config(default = 1.0e-4)]
-  learning_rate: f64,
+  pub learning_rate: f64,
 
   /// Amount of positive context
   #[config(default = 5)]
