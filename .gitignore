@@ -2,4 +2,5 @@
 /result
 /.direnv
 /proptest-regressions
+/experiments
 profile.json.gz

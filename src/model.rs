@@ -128,21 +128,11 @@ where
   B: AutodiffBackend<Device = LibTorchDevice>,
 {
   fn step(&self, batch: ContextBatch<B>) -> TrainOutput<EmbeddingOutput<B>> {
-    let gpu_device = LibTorchDevice::Cuda(0);
-
-    let [sample_data, pos_context_data, neg_context_data] = Transaction::default()
-      .register(batch.samples)
-      .register(batch.positive_context)
-      .register(batch.negative_context)
-      .execute()
-      .try_into()
-      .expect("failed to sync batch to GPU");
-
-    let samples: Tensor<B, 2> = Tensor::from_data(sample_data, &gpu_device);
-    let positive_context: Tensor<B, 3> = Tensor::from_data(pos_context_data, &gpu_device);
-    let negative_context: Tensor<B, 3> = Tensor::from_data(neg_context_data, &gpu_device);
-
-    let output = self.forward(samples, positive_context, negative_context);
+    let output = self.forward(
+      batch.samples,
+      batch.positive_context,
+      batch.negative_context,
+    );
 
     TrainOutput::new(self, output.loss.backward(), output)
   }
@@ -153,21 +143,11 @@ where
   B: Backend<Device = LibTorchDevice>,
 {
   fn step(&self, batch: ContextBatch<B>) -> EmbeddingOutput<B> {
-    let gpu_device = LibTorchDevice::Cuda(0);
-
-    let [sample_data, pos_context_data, neg_context_data] = Transaction::default()
-      .register(batch.samples)
-      .register(batch.positive_context)
-      .register(batch.negative_context)
-      .execute()
-      .try_into()
-      .expect("failed to sync batch to GPU");
-
-    let samples: Tensor<B, 2> = Tensor::from_data(sample_data, &gpu_device);
-    let positive_context: Tensor<B, 3> = Tensor::from_data(pos_context_data, &gpu_device);
-    let negative_context: Tensor<B, 3> = Tensor::from_data(neg_context_data, &gpu_device);
-
-    self.forward(samples, positive_context, negative_context)
+    self.forward(
+      batch.samples,
+      batch.positive_context,
+      batch.negative_context,
+    )
   }
 }
 

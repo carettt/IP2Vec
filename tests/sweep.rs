@@ -108,7 +108,7 @@ fn trial() {
   config.train::<Autodiff<Tch>>(dataset, &device);
 
   let mut loss_path = artifact_path.clone();
-  loss_path.push(format!("/valid/epoch-{}/Loss.log", config.epochs));
+  loss_path.push(format!("valid/epoch-{}/Loss.log", config.epochs));
 
   let loss = std::fs::read_to_string(&loss_path)
     .unwrap()

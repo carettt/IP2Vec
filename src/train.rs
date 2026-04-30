@@ -27,12 +27,14 @@ use burn::{
   },
 };
 
-static SYNC_DEVICE: LazyLock<LibTorchDevice> = LazyLock::new(|| {
+static TRAINING_DEVICES: LazyLock<Vec<LibTorchDevice>> = LazyLock::new(|| {
+  let mut devices = vec![LibTorchDevice::Cuda(0)];
+
   if std::env::var("IP2VEC_DUAL_GPU").is_ok() {
-    return LibTorchDevice::Cuda(1);
-  } else {
-    return LibTorchDevice::Cpu;
+    devices.push(LibTorchDevice::Cuda(1))
   }
+
+  devices
 });
 
 /// Struct containing various training parameters, including optimizer and model
@@ -154,7 +156,9 @@ impl TrainingConfig {
       .metric_valid(CudaMetric::new())
       .metric_valid(CpuUse::new())
       .with_file_checkpointer(DefaultRecorder::new())
-      .learning_strategy(LearningStrategy::SingleDevice(device.clone()))
+      .learning_strategy(LearningStrategy::MultiDeviceNaive(
+        (*TRAINING_DEVICES).clone(),
+      ))
       .num_epochs(self.epochs)
       .summary()
       .build(
@@ -220,7 +224,7 @@ impl<B: Backend> ItemLazy for EmbeddingOutput<B> {
       .try_into()
       .expect("could not sync embedding output");
 
-    let device = &*SYNC_DEVICE;
+    let device = &LibTorchDevice::Cpu;
 
     EmbeddingOutput {
       embeddings: Tensor::from_data(embeddings, device),
