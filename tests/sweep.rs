@@ -18,11 +18,11 @@ fn config_iter(
   model: Ip2VecConfig,
   optimizer: SgdConfig,
 ) -> impl Iterator<Item = TrainingConfig> {
-  let epochs = [10, 15, 20, 30];
-  let batch_sizes = [64, 512, 1024, 2048, 4096];
-  let learning_rates = [1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4, 1.0e-5];
+  let epochs = [10, 15, 20];
+  let batch_sizes = [1024, 2048, 4096];
+  let learning_rates = [1.0e-2, 1.0e-3, 1.0e-4];
   let context_windows = [4, 5, 6];
-  let neg_multiplers = [2, 5, 6];
+  let neg_multiplers = [2, 4, 5];
 
   iproduct!(
     epochs,
