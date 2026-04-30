@@ -18,27 +18,24 @@ fn config_iter(
   model: Ip2VecConfig,
   optimizer: SgdConfig,
 ) -> impl Iterator<Item = TrainingConfig> {
-  let epochs = [10, 15, 20];
   let batch_sizes = [1024, 2048, 4096];
   let learning_rates = [1.0e-2, 1.0e-3, 1.0e-4];
   let context_windows = [4, 5, 6];
   let neg_multiplers = [2, 4, 5];
 
   iproduct!(
-    epochs,
     batch_sizes,
     learning_rates,
     context_windows,
     neg_multiplers
   )
-  .map(move |(e, bs, lr, cw, nm)| {
+  .map(move |(bs, lr, cw, nm)| {
     TrainingConfig::new(
       dataset.clone(),
       features.clone(),
       model.clone(),
       optimizer.clone(),
     )
-    .with_epochs(e)
     .with_batch_size(bs)
     .with_learning_rate(lr)
     .with_context_window(cw)
@@ -48,7 +45,6 @@ fn config_iter(
 
 fn save_result(config_id: usize, config: &TrainingConfig, loss: f32) {
   let result_string = json!({
-    "epochs": config.epochs,
     "batch_size": config.batch_size,
     "learning_rate": config.learning_rate,
     "context_window": config.context_window,
